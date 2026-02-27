@@ -1,0 +1,44 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // 🔥 TESTING MODE - ALL PUBLIC ACCESS
+    // ⚠️ WARNING: Change these rules before production!
+    
+    match /{allPaths=**} {
+      allow read, write: if true;
+    }
+  }
+}
+
+// 🔒 PRODUCTION RULES (COMMENTED OUT)
+// Uncomment and deploy these rules when ready for production:
+//
+// rules_version = '2';
+// service firebase.storage {
+//   match /b/{bucket}/o {
+//     
+//     function isAuthenticated() {
+//       return request.auth != null;
+//     }
+//     
+//     function isCreator() {
+//       return isAuthenticated();
+//     }
+//     
+//     function isValidImage() {
+//       return request.resource.size < 5 * 1024 * 1024 // 5MB
+//              && request.resource.contentType.matches('image/.*');
+//     }
+//     
+//     // Event images
+//     match /events/{eventId}/{language}/{fileName} {
+//       // Anyone can read
+//       allow read: if true;
+//       // Only creators can upload images
+//       allow write: if isCreator() && isValidImage();
+//       // Only creators can delete their images
+//       allow delete: if isCreator();
+//     }
+//   }
+// }

@@ -1,0 +1,20 @@
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+// Use absolute path to avoid cross-drive relative path errors on Windows
+// (project on D: but pub cache on C: causes Gradle to fail with relative paths)
+rootProject.buildDir = rootProject.rootDir.toPath().resolve("../build").normalize().toFile()
+subprojects {
+    project.buildDir = "${rootProject.buildDir}/${project.name}"
+}
+subprojects {
+    project.evaluationDependsOn(":app")
+}
+
+tasks.register("clean", Delete) {
+    delete rootProject.buildDir
+}

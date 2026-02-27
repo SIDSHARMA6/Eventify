@@ -1,0 +1,63 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // 🔥 TESTING MODE - ALL PUBLIC ACCESS
+    // ⚠️ WARNING: Change these rules before production!
+    
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
+
+// 🔒 PRODUCTION RULES (COMMENTED OUT)
+// Uncomment and deploy these rules when ready for production:
+//
+// rules_version = '2';
+// service cloud.firestore {
+//   match /databases/{database}/documents {
+//     
+//     function isAuthenticated() {
+//       return request.auth != null;
+//     }
+//     
+//     function isCreator() {
+//       return isAuthenticated() && 
+//              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'creator';
+//     }
+//     
+//     function isAdmin() {
+//       return isAuthenticated() && 
+//              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+//     }
+//     
+//     match /users/{userId} {
+//       allow read: if true;
+//       allow create: if isAuthenticated() && request.auth.uid == userId;
+//       allow update: if isAuthenticated() && request.auth.uid == userId || isAdmin();
+//       allow delete: if isAdmin();
+//     }
+//     
+//     match /events/{eventId} {
+//       allow read: if resource.data.isHidden == false || isCreator() || isAdmin();
+//       allow create: if isCreator();
+//       allow update, delete: if (isCreator() && resource.data.createdBy == request.auth.uid) || isAdmin();
+//     }
+//     
+//     match /reservations/{reservationId} {
+//       allow read: if true;
+//       allow create: if true;
+//       allow update, delete: if isAdmin();
+//     }
+//     
+//     match /locations/{locationId} {
+//       allow read: if true;
+//       allow create, update, delete: if isAdmin();
+//     }
+//     
+//     match /fcm_tokens/{tokenId} {
+//       allow read, write: if true;
+//     }
+//   }
+// }
