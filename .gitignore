@@ -112,6 +112,7 @@ RULES_*.md
 SECURITY_*.md
 IMPLEMENTATION_*.md
 PERMISSIONS.md
+firebase.json
 
 # Environment files
 .env
