@@ -86,15 +86,32 @@ app.*.map.json
 /linux/flutter/generated_plugins.cmake
 
 # Firebase configuration files (contains sensitive API keys)
-# These are often excluded in public repositories but can be included in private ones.
 android/app/google-services.json
 ios/Runner/GoogleService-Info.plist
 lib/firebase_options.dart
 
 # Firebase service account keys (NEVER commit these)
+*.json
 scripts/serviceAccount.json
 *-firebase-adminsdk-*.json
 eventify-*-firebase-adminsdk-*.json
+serviceAccountKey.json
+
+# Firebase/Node scripts with potential credentials
+setup-firebase-users.js
+create-users.js
+scripts/*.js
+firestore.rules
+firestore.indexes.json
+firebase.json
+FIREBASE_*.md
+RE*.md
+SETUP.md
+PROJECT_*.md
+RULES_*.md
+SECURITY_*.md
+IMPLEMENTATION_*.md
+PERMISSIONS.md
 
 # Environment files
 .env
