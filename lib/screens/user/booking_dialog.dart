@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'dart:math';
 import '../../utils/app_text.dart';
-import '../../data/dummy_data.dart';
-import '../../services/local_storage_service.dart';
-import '../../services/local_notification_service.dart';
-import '../../providers/demo_data_provider.dart';
+import '../../utils/input_validator.dart';
+import '../../services/ticket_service.dart';
 import '../../providers/language_provider.dart';
 
 class BookingDialog extends StatefulWidget {
@@ -36,14 +33,13 @@ class _BookingDialogState extends State<BookingDialog> {
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     final errorColor = Theme.of(context).colorScheme.error;
 
-    // Get text values before async operations
-    final errorText = AppText.error(context);
-    final alreadyBookedText = AppText.alreadyBooked(context);
     final bookingSuccessText = AppText.bookingSuccess(context);
 
-    if (_nameController.text.trim().isEmpty) {
+    // Validate name using centralized validator
+    final nameError = InputValidator.validateUserName(_nameController.text);
+    if (nameError != null) {
       scaffoldMessenger.showSnackBar(
-        SnackBar(content: Text(errorText)),
+        SnackBar(content: Text(nameError), backgroundColor: errorColor),
       );
       return;
     }
@@ -51,103 +47,32 @@ class _BookingDialogState extends State<BookingDialog> {
     setState(() => _isLoading = true);
 
     try {
-      // Check if already booked using SharedPreferences
-      final hasBooked = await LocalStorageService.hasBookedEvent(
-        widget.event['id'],
+      // Create reservation in Firestore (service checks limits + duplicates)
+      await TicketService().createReservation(
+        eventId: widget.event['id'],
+        userName: _nameController.text.trim(),
+        gender: _selectedGender,
       );
-
-      if (hasBooked) {
-        throw Exception(alreadyBookedText);
-      }
-
-      // Check gender limit
-      final maleLimit = widget.event['maleLimit'] as int;
-      final femaleLimit = widget.event['femaleLimit'] as int;
-      final maleBooked = widget.event['maleBooked'] as int? ?? 0;
-      final femaleBooked = widget.event['femaleBooked'] as int? ?? 0;
-
-      if (_selectedGender == 'male' && maleBooked >= maleLimit) {
-        throw Exception('Sold out for males');
-      }
-
-      if (_selectedGender == 'female' && femaleBooked >= femaleLimit) {
-        throw Exception('Sold out for females');
-      }
-
-      // Simulate booking process
-      await Future.delayed(const Duration(seconds: 1));
-
-      // Create ticket
-      final ticket = {
-        'id': 'TICKET-${Random().nextInt(999999).toString().padLeft(6, '0')}',
-        'eventId': widget.event['id'],
-        'eventTitle_en': widget.event['title_en'],
-        'eventTitle_ja': widget.event['title_ja'],
-        'eventDate': widget.event['date'],
-        'eventTime': widget.event['startTime'],
-        'eventImage': widget.event['images_en'][0], // First image
-        'userName': _nameController.text.trim(),
-        'gender': _selectedGender,
-        'timestamp': DateTime.now().toIso8601String(),
-      };
-
-      // Save to dummy data
-      DummyData.tickets.add(ticket);
-
-      // Increment booked count
-      if (_selectedGender == 'male') {
-        widget.event['maleBooked'] = (maleBooked + 1);
-      } else {
-        widget.event['femaleBooked'] = (femaleBooked + 1);
-      }
-
-      // Save to SharedPreferences
-      await LocalStorageService.saveTickets();
-      await LocalStorageService.saveEvents();
-      await LocalStorageService.markEventAsBooked(widget.event['id']);
-
-      // Schedule reminder notifications
-      try {
-        final eventDateTime = DateTime.parse(
-          '${widget.event['date']} ${widget.event['startTime']}',
-        );
-        await LocalNotificationService().scheduleEventReminders(
-          eventId: widget.event['id'],
-          eventTitle: widget.event['title_en'],
-          eventDateTime: eventDateTime,
-        );
-      } catch (e) {
-        debugPrint('⚠️ Failed to schedule notifications: $e');
-      }
 
       if (!mounted) return;
       setState(() => _isLoading = false);
 
-      if (mounted) {
-        // Notify other screens to refresh
-        Provider.of<DemoDataProvider>(context, listen: false)
-            .notifyDataChanged();
-
-        navigator.pop(); // Close dialog only (stay on event details)
-
-        scaffoldMessenger.showSnackBar(
-          SnackBar(
-            content: Text(bookingSuccessText),
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
+      navigator.pop();
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text(bookingSuccessText),
+          duration: const Duration(seconds: 3),
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);
-      if (mounted) {
-        scaffoldMessenger.showSnackBar(
-          SnackBar(
-            content: Text(e.toString().replaceAll('Exception: ', '')),
-            backgroundColor: errorColor,
-          ),
-        );
-      }
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceAll('Exception: ', '')),
+          backgroundColor: errorColor,
+        ),
+      );
     }
   }
 
@@ -209,7 +134,9 @@ class _BookingDialogState extends State<BookingDialog> {
                         ),
                         borderRadius: BorderRadius.circular(8),
                         color: _selectedGender == 'male'
-                            ? Theme.of(context).primaryColor.withOpacity(0.1)
+                            ? Theme.of(context)
+                                .primaryColor
+                                .withValues(alpha: 0.1)
                             : null,
                       ),
                       child: Row(
@@ -257,7 +184,9 @@ class _BookingDialogState extends State<BookingDialog> {
                         ),
                         borderRadius: BorderRadius.circular(8),
                         color: _selectedGender == 'female'
-                            ? Theme.of(context).primaryColor.withOpacity(0.1)
+                            ? Theme.of(context)
+                                .primaryColor
+                                .withValues(alpha: 0.1)
                             : null,
                       ),
                       child: Row(

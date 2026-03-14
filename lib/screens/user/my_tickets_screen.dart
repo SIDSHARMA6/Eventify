@@ -2,78 +2,72 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../widgets/ticket_card.dart';
 import '../../utils/app_text.dart';
-import '../../data/dummy_data.dart';
-import '../../services/local_storage_service.dart';
-import '../../services/local_notification_service.dart';
-import '../../providers/demo_data_provider.dart';
+import '../../services/ticket_service.dart';
 import '../../providers/language_provider.dart';
 import '../../widgets/gradient_app_bar.dart';
 
-class MyTicketsScreen extends StatefulWidget {
+class MyTicketsScreen extends StatelessWidget {
   const MyTicketsScreen({super.key});
 
   @override
-  State<MyTicketsScreen> createState() => _MyTicketsScreenState();
-}
+  Widget build(BuildContext context) {
+    context.watch<LanguageProvider>();
 
-class _MyTicketsScreenState extends State<MyTicketsScreen>
-    with AutomaticKeepAliveClientMixin {
-  bool _isLoading = true;
+    return Scaffold(
+      appBar: GradientAppBar(
+        title: const Text(
+          'My Tickets (Best Evento 🎉)',
+          style: TextStyle(color: Colors.white),
+        ),
+      ),
+      body: StreamBuilder<List<Map<String, dynamic>>>(
+        stream: TicketService().getMyReservations(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting &&
+              !snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-  @override
-  bool get wantKeepAlive => true;
+          if (snapshot.hasError) {
+            return Center(child: Text('Error: ${snapshot.error}'));
+          }
 
-  @override
-  void initState() {
-    super.initState();
-    _loadTickets();
+          // Filter out deleted tickets and past events
+          final now = DateTime.now();
+          final today = DateTime(now.year, now.month, now.day);
+
+          final tickets = (snapshot.data ?? []).where((ticket) {
+            if (ticket['isDeleted'] == true) return false;
+            // Exclude tickets for events that already ended
+            try {
+              final eventDate = DateTime.parse(ticket['eventDate'] ?? '');
+              return !eventDate.isBefore(today);
+            } catch (_) {
+              return true; // keep if can't parse
+            }
+          }).toList();
+
+          if (tickets.isEmpty) {
+            return _buildEmptyState(context);
+          }
+
+          return ListView.builder(
+            physics: const BouncingScrollPhysics(),
+            itemCount: tickets.length,
+            itemBuilder: (context, index) {
+              return TicketCard(
+                ticket: tickets[index],
+                onCancel: () => _cancelTicket(context, tickets[index]),
+              );
+            },
+          );
+        },
+      ),
+    );
   }
 
-  Future<void> _loadTickets() async {
-    // Auto-expire tickets for events that have already passed
-    await _expirePastTickets();
-    if (mounted) setState(() => _isLoading = false);
-  }
-
-  Future<void> _expirePastTickets() async {
-    final now = DateTime.now();
-    final expired = DummyData.tickets.where((ticket) {
-      try {
-        final eventDate =
-            DateTime.parse(ticket['eventDate'] ?? ticket['date'] ?? '');
-        // Expire after midnight of the event day
-        return eventDate.isBefore(DateTime(now.year, now.month, now.day));
-      } catch (_) {
-        return false;
-      }
-    }).toList();
-
-    if (expired.isEmpty) return;
-
-    for (final ticket in expired) {
-      // Decrement booked count on the event
-      final eventId = ticket['eventId'];
-      final event = DummyData.events.firstWhere(
-        (e) => e['id'] == eventId,
-        orElse: () => {},
-      );
-      if (event.isNotEmpty) {
-        if (ticket['gender'] == 'male') {
-          final cur = (event['maleBooked'] as int?) ?? 0;
-          event['maleBooked'] = (cur - 1).clamp(0, 9999);
-        } else {
-          final cur = (event['femaleBooked'] as int?) ?? 0;
-          event['femaleBooked'] = (cur - 1).clamp(0, 9999);
-        }
-      }
-      DummyData.tickets.remove(ticket);
-    }
-
-    await LocalStorageService.saveTickets();
-    await LocalStorageService.saveEvents();
-  }
-
-  Future<void> _cancelTicket(Map<String, dynamic> ticket) async {
+  Future<void> _cancelTicket(
+      BuildContext context, Map<String, dynamic> ticket) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -87,96 +81,39 @@ class _MyTicketsScreenState extends State<MyTicketsScreen>
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             style: TextButton.styleFrom(
-              foregroundColor: Theme.of(context).colorScheme.error,
-            ),
+                foregroundColor: Theme.of(context).colorScheme.error),
             child: Text(AppText.yes(context)),
           ),
         ],
       ),
     );
 
-    if (confirm == true) {
-      // Find the event and decrement booked count
-      final eventId = ticket['eventId'];
-      final gender = ticket['gender'];
-      final event = DummyData.events.firstWhere(
-        (e) => e['id'] == eventId,
-        orElse: () => {},
-      );
-
-      if (event.isNotEmpty) {
-        if (gender == 'male') {
-          final cur = (event['maleBooked'] as int?) ?? 0;
-          event['maleBooked'] = (cur - 1).clamp(0, 9999);
-        } else {
-          final cur = (event['femaleBooked'] as int?) ?? 0;
-          event['femaleBooked'] = (cur - 1).clamp(0, 9999);
-        }
-      }
-
-      setState(() {
-        DummyData.tickets.remove(ticket);
-      });
-
-      // Save to SharedPreferences
-      await LocalStorageService.saveTickets();
-      await LocalStorageService.saveEvents();
-      await LocalStorageService.unmarkEventAsBooked(eventId);
-
-      // Cancel reminder notifications
-      await LocalNotificationService().cancelEventReminders(eventId);
-
-      if (mounted) {
-        // Notify other screens to refresh
-        Provider.of<DemoDataProvider>(context, listen: false)
-            .notifyDataChanged();
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AppText.success(context))),
+    if (confirm == true && context.mounted) {
+      try {
+        await TicketService().cancelReservation(
+          ticket['id'],
+          ticket['eventId'],
+          ticket['gender'],
         );
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(AppText.success(context))),
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error: $e'),
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+          );
+        }
       }
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    super.build(context); // Required by AutomaticKeepAliveClientMixin
-    context.watch<LanguageProvider>(); // rebuild when language changes
-    context.watch<DemoDataProvider>(); // rebuild when tickets change
-
-    // Always read live list from DummyData - filter out deleted tickets
-    final tickets = DummyData.tickets
-        .where((ticket) => ticket['isDeleted'] != true)
-        .toList();
-
-    return Scaffold(
-      appBar: GradientAppBar(
-        title: Text(
-          AppText.myTickets(context),
-          style: const TextStyle(color: Colors.white),
-        ),
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : tickets.isEmpty
-              ? _buildEmptyState()
-              : RefreshIndicator(
-                  onRefresh: _loadTickets,
-                  child: ListView.builder(
-                    physics: const BouncingScrollPhysics(),
-                    itemCount: tickets.length,
-                    itemBuilder: (context, index) {
-                      return TicketCard(
-                        ticket: tickets[index],
-                        onCancel: () => _cancelTicket(tickets[index]),
-                      );
-                    },
-                  ),
-                ),
-    );
-  }
-
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(BuildContext context) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,

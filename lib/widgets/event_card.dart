@@ -6,6 +6,7 @@ import '../widgets/image_carousel.dart';
 import '../utils/responsive.dart';
 import '../utils/helpers.dart';
 import '../utils/app_text.dart';
+import '../utils/language_helper.dart';
 import '../config/theme.dart';
 
 class EventCard extends StatelessWidget {
@@ -23,23 +24,13 @@ class EventCard extends StatelessWidget {
     context.watch<LanguageProvider>(); // rebuild when language changes
     final languageProvider =
         Provider.of<LanguageProvider>(context, listen: false);
-    final isEnglish = languageProvider.currentLanguage == 'en';
+    final isJapanese = languageProvider.currentLanguage == 'ja';
+    final isEnglish = !isJapanese; // For backward compatibility
 
-    final title = isEnglish ? event['title_en'] : event['title_ja'];
-    final venueName = isEnglish
-        ? (event['venueName_en'] ?? event['venueName'] ?? '')
-        : (event['venueName_ja'] ?? event['venueName'] ?? '');
-
-    // Safely convert images to List<String> - use cast for better performance
-    final imagesRaw = isEnglish ? event['images_en'] : event['images_ja'];
-    final List<String> images;
-    if (imagesRaw is List<String>) {
-      images = imagesRaw;
-    } else if (imagesRaw is List) {
-      images = imagesRaw.cast<String>();
-    } else {
-      images = <String>[];
-    }
+    // Use helper with fallback
+    final title = LanguageHelper.getEventTitle(event, isJapanese);
+    final venueName = LanguageHelper.getVenueName(event, isJapanese);
+    final images = LanguageHelper.getImages(event, isJapanese);
 
     return Card(
       margin: EdgeInsets.symmetric(
@@ -105,46 +96,10 @@ class EventCard extends StatelessWidget {
 
                   const SizedBox(height: 8),
 
-                  // Venue Name and View Map Button
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
+                  // Venue Name and View Map — equal width
+                  Row(
                     children: [
-                      // Venue Name Tag
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          gradient: AppTheme.pinkGradient,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          venueName,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Colors.white,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-
-                      // View Map Button
-                      InkWell(
-                        onTap: () async {
-                          final rawLink = (event['mapLink'] as String?)?.trim();
-                          final link = (rawLink == null || rawLink.isEmpty)
-                              ? 'https://maps.google.com'
-                              : rawLink;
-                          final url = Uri.parse(link);
-                          try {
-                            await launchUrl(
-                              url,
-                              mode: LaunchMode.externalApplication,
-                            );
-                          } catch (_) {}
-                        },
+                      Expanded(
                         child: Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 12,
@@ -155,23 +110,86 @@ class EventCard extends StatelessWidget {
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: Row(
-                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              const Icon(
-                                Icons.map,
-                                size: 14,
-                                color: Colors.white,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                AppText.viewMap(context),
-                                style: const TextStyle(
-                                  fontSize: 12,
+                              const Text(
+                                '𖠿',
+                                style: TextStyle(
+                                  fontSize: 18,
                                   color: Colors.white,
-                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(width: 5),
+                              Expanded(
+                                child: Text(
+                                  venueName,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.center,
                                 ),
                               ),
                             ],
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(width: 8),
+
+                      // View Map Button
+                      Expanded(
+                        child: InkWell(
+                          onTap: () async {
+                            final rawLink =
+                                (event['mapLink'] as String?)?.trim();
+                            if (rawLink == null ||
+                                rawLink.isEmpty ||
+                                !rawLink.startsWith('https://')) {
+                              final url = Uri.parse('https://maps.google.com');
+                              try {
+                                await launchUrl(url,
+                                    mode: LaunchMode.externalApplication);
+                              } catch (_) {}
+                              return;
+                            }
+                            final url = Uri.parse(rawLink);
+                            try {
+                              await launchUrl(url,
+                                  mode: LaunchMode.externalApplication);
+                            } catch (_) {}
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              gradient: AppTheme.pinkGradient,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(
+                                  Icons.place,
+                                  size: 18,
+                                  color: Colors.white,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  AppText.viewMap(context),
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),

@@ -41,7 +41,11 @@ class _ImageCarouselState extends State<ImageCarousel>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       for (final imagePath in widget.images) {
-        precacheImage(AssetImage(imagePath), context);
+        if (imagePath.startsWith('http')) {
+          precacheImage(NetworkImage(imagePath), context);
+        } else {
+          precacheImage(AssetImage(imagePath), context);
+        }
       }
       _imagesPrecached = true;
     });
@@ -73,10 +77,7 @@ class _ImageCarouselState extends State<ImageCarousel>
             height: widget.height,
             viewportFraction: 1.0,
             enableInfiniteScroll: widget.images.length > 1,
-            autoPlay: true,
-            autoPlayInterval: const Duration(seconds: 3),
-            autoPlayAnimationDuration: const Duration(milliseconds: 800),
-            autoPlayCurve: Curves.fastOutSlowIn,
+            autoPlay: false,
             onPageChanged: (index, reason) {
               setState(() {
                 _currentIndex = index;
@@ -93,7 +94,9 @@ class _ImageCarouselState extends State<ImageCarousel>
                       top: Radius.circular(12),
                     ),
                     image: DecorationImage(
-                      image: AssetImage(imagePath),
+                      image: imagePath.startsWith('http')
+                          ? NetworkImage(imagePath) as ImageProvider
+                          : AssetImage(imagePath) as ImageProvider,
                       fit: BoxFit.cover,
                     ),
                   ),

@@ -1,18 +1,21 @@
 import 'package:flutter/material.dart';
-import 'services/local_storage_service.dart';
-import 'services/ticket_cleanup_service.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
+import 'services/firebase_service.dart';
+import 'services/notification_service.dart';
+import 'services/cloudinary_service.dart';
 import 'app.dart';
 
 void main() async {
-  // Initialize Flutter bindings
   WidgetsFlutterBinding.ensureInitialized();
 
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
 
-  // Load data from SharedPreferences
-  await LocalStorageService.initialize();
-
-  // Cleanup expired tickets
-  await TicketCleanupService.checkOnStartup();
+  await FirebaseService().initialize();
+  await NotificationService().initialize();
+  CloudinaryService().initialize();
 
   runApp(const EventifyApp());
 }

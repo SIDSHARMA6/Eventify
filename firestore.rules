@@ -2,62 +2,103 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // 🔥 TESTING MODE - ALL PUBLIC ACCESS
-    // ⚠️ WARNING: Change these rules before production!
+    // Helper functions
+    function isAuth() {
+      return request.auth != null;
+    }
     
-    match /{document=**} {
-      allow read, write: if true;
+    function getRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+    
+    function isAdmin() {
+      return isAuth() && getRole() == 'admin';
+    }
+    
+    function isCreator() {
+      return isAuth() && (getRole() == 'creator' || getRole() == 'admin');
+    }
+    
+    function isEventOwner(eventId) {
+      return isAuth() && 
+        get(/databases/$(database)/documents/events/$(eventId)).data.createdBy == request.auth.uid;
+    }
+    
+    // USERS - Only admins can manage user accounts
+    match /users/{userId} {
+      allow read: if isAdmin() || (isAuth() && request.auth.uid == userId);
+      allow write: if isAdmin();
+    }
+    
+    // EVENTS - Public read (non-hidden), creator/admin write
+    match /events/{eventId} {
+      // Anyone can read non-hidden events, creators/admins can read all
+      allow read: if !resource.data.isHidden || isCreator();
+      
+      // Only creators and admins can create events
+      allow create: if isCreator();
+      
+      // Only event owner or admin can update/delete (full update)
+      allow update: if isAdmin() || (isCreator() && isEventOwner(eventId))
+        // Anyone can increment/decrement booked counts when booking tickets
+        || (
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['maleBooked', 'femaleBooked'])
+        );
+      allow delete: if isAdmin() || (isCreator() && isEventOwner(eventId));
+    }
+    
+    // RESERVATIONS - Public create (anonymous booking), admin manage
+    match /reservations/{reservationId} {
+      // Anyone can read their own reservation by deviceId
+      // (UI queries by deviceId; Firestore rules can't filter by field on reads)
+      allow read: if true;
+      
+      // Anyone can create a reservation — but must supply valid fields
+      // The doc ID (deviceId_eventId) enforces one-per-device-per-event at DB level
+      allow create: if
+        // Required fields must exist
+        request.resource.data.keys().hasAll([
+          'eventId', 'deviceId', 'userName', 'gender',
+          'ticketId', 'timestamp', 'isCancelled', 'isScanned', 'isDeleted'
+        ])
+        // Initial state must be clean (not pre-scanned or pre-cancelled)
+        && request.resource.data.isCancelled == false
+        && request.resource.data.isScanned == false
+        && request.resource.data.isDeleted == false
+        && request.resource.data.checkedInAt == null
+        // Gender must be valid
+        && (request.resource.data.gender == 'male' || request.resource.data.gender == 'female')
+        // Name must not be empty
+        && request.resource.data.userName.size() > 0
+        && request.resource.data.userName.size() <= 50;
+      
+      // Users can cancel ONLY their own reservation (isCancelled false→true only)
+      // Admins can do full updates (check-in, scan, etc.)
+      allow update: if isAdmin()
+        || (
+          // Owner cancel: only allowed to flip isCancelled from false -> true
+          resource.data.isCancelled == false
+          && request.resource.data.isCancelled == true
+          && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['isCancelled', 'cancelledAt'])
+        );
+      
+      // Only admins can hard-delete reservations
+      allow delete: if isAdmin();
+    }
+    
+    // LOCATIONS - Public read, admin write
+    match /locations/{locationId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    // FCM TOKENS - Any device can save its token, but only admins can read them
+    match /fcm_tokens/{tokenId} {
+      allow write: if true;          // devices must register their token
+      allow read: if isAdmin();      // only admins target specific devices
     }
   }
 }
 
-// 🔒 PRODUCTION RULES (COMMENTED OUT)
-// Uncomment and deploy these rules when ready for production:
-//
-// rules_version = '2';
-// service cloud.firestore {
-//   match /databases/{database}/documents {
-//     
-//     function isAuthenticated() {
-//       return request.auth != null;
-//     }
-//     
-//     function isCreator() {
-//       return isAuthenticated() && 
-//              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'creator';
-//     }
-//     
-//     function isAdmin() {
-//       return isAuthenticated() && 
-//              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
-//     }
-//     
-//     match /users/{userId} {
-//       allow read: if true;
-//       allow create: if isAuthenticated() && request.auth.uid == userId;
-//       allow update: if isAuthenticated() && request.auth.uid == userId || isAdmin();
-//       allow delete: if isAdmin();
-//     }
-//     
-//     match /events/{eventId} {
-//       allow read: if resource.data.isHidden == false || isCreator() || isAdmin();
-//       allow create: if isCreator();
-//       allow update, delete: if (isCreator() && resource.data.createdBy == request.auth.uid) || isAdmin();
-//     }
-//     
-//     match /reservations/{reservationId} {
-//       allow read: if true;
-//       allow create: if true;
-//       allow update, delete: if isAdmin();
-//     }
-//     
-//     match /locations/{locationId} {
-//       allow read: if true;
-//       allow create, update, delete: if isAdmin();
-//     }
-//     
-//     match /fcm_tokens/{tokenId} {
-//       allow read, write: if true;
-//     }
-//   }
-// }

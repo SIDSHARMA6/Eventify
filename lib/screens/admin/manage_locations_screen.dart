@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../utils/app_text.dart';
-import '../../data/dummy_data.dart';
-import '../../providers/demo_data_provider.dart';
 import '../../providers/language_provider.dart';
-import '../../services/local_storage_service.dart';
+import '../../services/location_management_service.dart';
 import '../../widgets/gradient_app_bar.dart';
 
 class ManageLocationsScreen extends StatefulWidget {
@@ -19,17 +17,21 @@ class _ManageLocationsScreenState extends State<ManageLocationsScreen>
   @override
   bool get wantKeepAlive => true;
 
-  // 🔥 FIREBASE VERSION (COMMENTED OUT FOR DEMO)
-  // final locationService = LocationManagementService();
+  final _locationService = LocationManagementService();
 
-  void _showAddLocationDialog() async {
-    final nameEnController = TextEditingController();
-    final nameJaController = TextEditingController();
+  void _showLocationDialog({Map<String, dynamic>? location}) async {
+    final isEditing = location != null;
+    final nameEnController =
+        TextEditingController(text: location?['name_en'] ?? '');
+    final nameJaController =
+        TextEditingController(text: location?['name_ja'] ?? '');
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(AppText.addLocation(context)),
+        title: Text(isEditing
+            ? AppText.editLocation(context)
+            : AppText.addLocation(context)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -37,7 +39,7 @@ class _ManageLocationsScreenState extends State<ManageLocationsScreen>
               controller: nameEnController,
               decoration: InputDecoration(
                 labelText: AppText.nameEnglish(context),
-                hintText: 'e.g., Tokyo',
+                hintText: isEditing ? null : 'e.g., Tokyo',
               ),
             ),
             const SizedBox(height: 16),
@@ -45,7 +47,7 @@ class _ManageLocationsScreenState extends State<ManageLocationsScreen>
               controller: nameJaController,
               decoration: InputDecoration(
                 labelText: AppText.nameJapanese(context),
-                hintText: 'e.g., 東京',
+                hintText: isEditing ? null : 'e.g., 東京',
               ),
             ),
           ],
@@ -57,7 +59,7 @@ class _ManageLocationsScreenState extends State<ManageLocationsScreen>
           ),
           TextButton(
             onPressed: () async {
-              if (nameEnController.text.isEmpty) {
+              if (nameEnController.text.trim().isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                       content: Text(AppText.pleaseEnterEnglishName(context))),
@@ -65,126 +67,32 @@ class _ManageLocationsScreenState extends State<ManageLocationsScreen>
                 return;
               }
 
-              setState(() {
-                DummyData.locations.add({
-                  'name_en': nameEnController.text.trim(),
-                  'name_ja': nameJaController.text.trim(),
-                });
-              });
-
-              // Save to SharedPreferences
-              await LocalStorageService.saveLocations();
-
-              // Notify other screens to refresh
-              if (context.mounted) {
-                Provider.of<DemoDataProvider>(context, listen: false)
-                    .notifyDataChanged();
-
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(AppText.success(context))),
-                );
+              try {
+                if (isEditing) {
+                  await _locationService.updateLocation(location['id'], {
+                    'name_en': nameEnController.text.trim(),
+                    'name_ja': nameJaController.text.trim(),
+                  });
+                } else {
+                  await _locationService.createLocation({
+                    'name_en': nameEnController.text.trim(),
+                    'name_ja': nameJaController.text.trim(),
+                    'order': 999,
+                  });
+                }
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(AppText.success(context))),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error: $e')),
+                  );
+                }
               }
-
-              // 🔥 FIREBASE VERSION (COMMENTED OUT FOR DEMO)
-              // try {
-              //   await service.createLocation({
-              //     'name_en': nameEnController.text.trim(),
-              //     'name_ja': nameJaController.text.trim(),
-              //     'order': 999,
-              //   });
-              //   if (context.mounted) {
-              //     Navigator.pop(context);
-              //     ScaffoldMessenger.of(context).showSnackBar(
-              //       SnackBar(content: Text(AppText.success(context))),
-              //     );
-              //   }
-              // } catch (e) {
-              //   if (context.mounted) {
-              //     ScaffoldMessenger.of(context).showSnackBar(
-              //       SnackBar(content: Text('Error: $e')),
-              //     );
-              //   }
-              // }
-            },
-            child: Text(AppText.save(context)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showEditLocationDialog(Map<String, dynamic> location) async {
-    final nameEnController = TextEditingController(text: location['name_en']);
-    final nameJaController = TextEditingController(text: location['name_ja']);
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(AppText.editLocation(context)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameEnController,
-              decoration: InputDecoration(
-                labelText: AppText.nameEnglish(context),
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: nameJaController,
-              decoration: InputDecoration(
-                labelText: AppText.nameJapanese(context),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(AppText.cancel(context)),
-          ),
-          TextButton(
-            onPressed: () async {
-              setState(() {
-                location['name_en'] = nameEnController.text.trim();
-                location['name_ja'] = nameJaController.text.trim();
-              });
-
-              // Save to SharedPreferences
-              await LocalStorageService.saveLocations();
-
-              // Notify other screens to refresh
-              if (context.mounted) {
-                Provider.of<DemoDataProvider>(context, listen: false)
-                    .notifyDataChanged();
-
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(AppText.success(context))),
-                );
-              }
-
-              // 🔥 FIREBASE VERSION (COMMENTED OUT FOR DEMO)
-              // try {
-              //   await service.updateLocation(location['id'], {
-              //     'name_en': nameEnController.text.trim(),
-              //     'name_ja': nameJaController.text.trim(),
-              //   });
-              //   if (context.mounted) {
-              //     Navigator.pop(context);
-              //     ScaffoldMessenger.of(context).showSnackBar(
-              //       SnackBar(content: Text(AppText.success(context))),
-              //     );
-              //   }
-              // } catch (e) {
-              //   if (context.mounted) {
-              //     ScaffoldMessenger.of(context).showSnackBar(
-              //       SnackBar(content: Text('Error: $e')),
-              //     );
-              //   }
-              // }
             },
             child: Text(AppText.save(context)),
           ),
@@ -218,47 +126,27 @@ class _ManageLocationsScreenState extends State<ManageLocationsScreen>
     );
 
     if (confirm == true) {
-      setState(() {
-        DummyData.locations.remove(location);
-      });
-
-      // Save to SharedPreferences
-      await LocalStorageService.saveLocations();
-
-      // Notify other screens to refresh
-      if (mounted) {
-        Provider.of<DemoDataProvider>(context, listen: false)
-            .notifyDataChanged();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AppText.success(context))),
-        );
+      try {
+        await _locationService.deleteLocation(location['id']);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(AppText.success(context))),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e')),
+          );
+        }
       }
-
-      // 🔥 FIREBASE VERSION (COMMENTED OUT FOR DEMO)
-      // try {
-      //   await locationService.deleteLocation(location['id']);
-      //   if (context.mounted) {
-      //     ScaffoldMessenger.of(context).showSnackBar(
-      //       SnackBar(content: Text(AppText.success(context))),
-      //     );
-      //   }
-      // } catch (e) {
-      //   if (context.mounted) {
-      //     ScaffoldMessenger.of(context).showSnackBar(
-      //       SnackBar(content: Text('Error: $e')),
-      //     );
-      //   }
-      // }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    context.watch<LanguageProvider>(); // rebuild when language changes
-
-    // Using dummy data for demo
-    final locations = DummyData.locations;
+    context.watch<LanguageProvider>();
 
     return Scaffold(
       appBar: GradientAppBar(
@@ -269,12 +157,22 @@ class _ManageLocationsScreenState extends State<ManageLocationsScreen>
         actions: [
           IconButton(
             icon: const Icon(Icons.add),
-            onPressed: _showAddLocationDialog,
+            onPressed: () => _showLocationDialog(),
           ),
         ],
       ),
-      body: locations.isEmpty
-          ? Center(
+      body: StreamBuilder<List<Map<String, dynamic>>>(
+        stream: _locationService.getAllLocations(),
+        builder: (context, snapshot) {
+          final locations = snapshot.data ?? [];
+
+          if (snapshot.connectionState == ConnectionState.waiting &&
+              locations.isEmpty) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (locations.isEmpty) {
+            return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -290,88 +188,73 @@ class _ManageLocationsScreenState extends State<ManageLocationsScreen>
                   ),
                   const SizedBox(height: 8),
                   ElevatedButton.icon(
-                    onPressed: _showAddLocationDialog,
+                    onPressed: () => _showLocationDialog(),
                     icon: const Icon(Icons.add),
                     label: Text(AppText.addLocation(context)),
                   ),
                 ],
               ),
-            )
-          : ReorderableListView.builder(
-              physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.all(16),
-              itemCount: locations.length,
-              onReorder: (oldIndex, newIndex) {
-                setState(() {
-                  if (newIndex > oldIndex) {
-                    newIndex -= 1;
-                  }
-                  final item = locations.removeAt(oldIndex);
-                  locations.insert(newIndex, item);
-                });
-              },
-              itemBuilder: (context, index) {
-                final location = locations[index];
-                return Card(
-                  key: ValueKey(location['name_en']),
-                  margin: const EdgeInsets.only(bottom: 12),
-                  child: ListTile(
-                    leading: const Icon(Icons.location_on),
-                    title: Text(
-                      location['name_en'] ?? 'No name',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    subtitle: Text(
-                      location['name_ja'] ?? '',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.edit, size: 20),
-                          onPressed: () => _showEditLocationDialog(location),
-                        ),
-                        IconButton(
-                          icon: Icon(Icons.delete,
-                              size: 20,
-                              color: Theme.of(context).colorScheme.error),
-                          onPressed: () => _deleteLocation(location),
-                        ),
-                      ],
-                    ),
+            );
+          }
+
+          return ReorderableListView.builder(
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.all(16),
+            itemCount: locations.length,
+            onReorder: (oldIndex, newIndex) async {
+              if (newIndex > oldIndex) newIndex -= 1;
+              final reordered = List<Map<String, dynamic>>.from(locations);
+              final item = reordered.removeAt(oldIndex);
+              reordered.insert(newIndex, item);
+              // Update order field in Firestore
+              for (int i = 0; i < reordered.length; i++) {
+                await _locationService
+                    .updateLocation(reordered[i]['id'], {'order': i});
+              }
+            },
+            itemBuilder: (context, index) {
+              final location = locations[index];
+              return Card(
+                key: ValueKey(location['id'] ?? location['name_en']),
+                margin: const EdgeInsets.only(bottom: 12),
+                child: ListTile(
+                  leading: const Icon(Icons.location_on),
+                  title: Text(
+                    location['name_en'] ?? 'No name',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                );
-              },
-            ),
+                  subtitle: Text(
+                    location['name_ja'] ?? '',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.edit, size: 20),
+                        onPressed: () =>
+                            _showLocationDialog(location: location),
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.delete,
+                            size: 20,
+                            color: Theme.of(context).colorScheme.error),
+                        onPressed: () => _deleteLocation(location),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _showAddLocationDialog,
+        onPressed: () => _showLocationDialog(),
         child: const Icon(Icons.add),
       ),
     );
-
-    // 🔥 FIREBASE VERSION (COMMENTED OUT FOR DEMO)
-    // return Scaffold(
-    //   appBar: AppBar(
-    //     title: Text(AppText.manageLocations(context)),
-    //     actions: [
-    //       IconButton(
-    //         icon: const Icon(Icons.add),
-    //         onPressed: () => _showAddLocationDialog(context, locationService),
-    //       ),
-    //     ],
-    //   ),
-    //   body: StreamBuilder<List<Map<String, dynamic>>>(
-    //     stream: locationService.getAllLocations(),
-    //     builder: (context, snapshot) {
-    //       if (snapshot.connectionState == ConnectionState.waiting) {
-    //         return const Center(child: CircularProgressIndicator());
-    //       }
-    //       // ... rest of Firebase implementation
-    //     },
-    //   ),
-    // );
   }
 }

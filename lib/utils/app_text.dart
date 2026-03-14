@@ -49,7 +49,13 @@ class AppText {
   static String viewMap(BuildContext context) =>
       _getText(context, 'View Map', '地図を見る');
   static String shareApp(BuildContext context) =>
-      _getText(context, 'Share App', 'アプリを共有');
+      _getText(context, 'Share Event', 'イベントを共有する');
+  static String venueAddress(BuildContext context) =>
+      _getText(context, 'Venue Address', '会場住所');
+  static String addToCalendar(BuildContext context) =>
+      _getText(context, 'Add to Calendar', 'カレンダーに追加');
+  static String pricing(BuildContext context) =>
+      _getText(context, 'Pricing', '料金');
 
   // Booking
   static String bookTicket(BuildContext context) =>
@@ -99,6 +105,12 @@ class AppText {
       _getText(context, 'About App', 'アプリについて');
   static String privacyPolicy(BuildContext context) =>
       _getText(context, 'Privacy Policy', 'プライバシーポリシー');
+  static String eventCollaboration(BuildContext context) =>
+      _getText(context, 'Event Collaboration Request', 'イベントコラボレーション依頼');
+  static String commercialDisclosure(BuildContext context) =>
+      _getText(context, 'Commercial Disclosure', '特定商取引法に基づく表記');
+  static String cancellationPolicy(BuildContext context) =>
+      _getText(context, 'Cancellation Policy', 'キャンセルポリシー');
   static String contactUs(BuildContext context) =>
       _getText(context, 'Contact Us', 'お問い合わせ');
   static String version(BuildContext context) =>
@@ -137,6 +149,9 @@ class AppText {
       _getText(context, 'Manage Locations', 'ロケーション管理');
   static String analytics(BuildContext context) =>
       _getText(context, 'Analytics', '分析');
+
+  static String adminDashboardSubtitle(BuildContext context) => _getText(
+      context, 'Manage events, creators & tickets', 'イベント、クリエイター、チケットの管理');
 
   // Common
   static String email(BuildContext context) =>
@@ -353,8 +368,8 @@ class AppText {
       _getText(context, 'About', 'について');
   static String aboutDescription(BuildContext context) => _getText(
       context,
-      'Best Event is an event discovery and ticketing app that connects people with amazing local events.',
-      'Best Eventは、素晴らしい地元のイベントと人々をつなぐイベント発見・チケット販売アプリです。');
+      'Best Evento is an event discovery and ticketing app that connects people with amazing local events.',
+      'Best Eventoは、素晴らしい地元のイベントと人々をつなぐイベント発見・チケット販売アプリです。');
   static String languages(BuildContext context) =>
       _getText(context, 'Languages', '言語');
   static String contact(BuildContext context) =>
@@ -363,8 +378,8 @@ class AppText {
       _getText(context, 'Copyright', '著作権');
   static String copyrightText(BuildContext context) => _getText(
       context,
-      '© 2026 Best Event. All rights reserved.',
-      '© 2026 Best Event. All rights reserved.');
+      '© 2026 Best Evento. All rights reserved.',
+      '© 2026 Best Evento. All rights reserved.');
   static String madeWithLove(BuildContext context) =>
       _getText(context, 'Made with ❤️ in Japan', '日本で❤️を込めて作成');
   static String versionLabel(BuildContext context) =>

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import '../../data/dummy_data.dart';
 import '../../utils/app_text.dart';
 import '../../widgets/gradient_app_bar.dart';
 import 'checkin_history_screen.dart';
@@ -54,42 +54,66 @@ class _QRScannerScreenState extends State<QRScannerScreen>
 
     setState(() => _isProcessing = true);
 
-    // Find ticket by ID
-    final ticket = DummyData.tickets.firstWhere(
-      (t) => t['id'] == code,
-      orElse: () => {},
-    );
+    // Pre-capture all context-dependent values BEFORE any await call
+    final invalidTitle = AppText.invalidTicket(context);
+    final notFoundMsg = AppText.ticketNotFound(context);
+    final checkInSuccessTitle = AppText.checkInSuccessful(context);
+    final alreadyCheckedInTitle = AppText.alreadyCheckedIn(context);
+
+    // Lookup reservation in Firestore by document ID
+    Map<String, dynamic> ticket = {};
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('reservations')
+          .doc(code)
+          .get();
+      if (doc.exists) {
+        ticket = Map<String, dynamic>.from(doc.data()!);
+        ticket['id'] = doc.id;
+      }
+    } catch (e) {
+      debugPrint('Firestore QR lookup error: $e');
+    }
+
+    if (!mounted) return;
 
     if (ticket.isEmpty) {
-      _showResultDialog(
-        AppText.invalidTicket(context),
-        AppText.ticketNotFound(context),
-        false,
-      );
+      _showResultDialog(invalidTitle, notFoundMsg, false);
     } else {
-      // Mark attendance (add timestamp if not already marked)
+      // Mark attendance in Firestore if not already checked in
       if (ticket['checkedInAt'] == null) {
-        ticket['checkedInAt'] = DateTime.now().toIso8601String();
-        _showResultDialog(
-          AppText.checkInSuccessful(context),
-          AppText.ticketDetails(
-            context,
-            ticket['id'],
-            ticket['userName'],
-            ticket['gender'],
-            ticket['eventTitle_en'],
-          ),
-          true,
+        // Pre-capture all remaining context values before the next await
+        final ticketDetailsMsg = AppText.ticketDetails(
+          context,
+          ticket['id'],
+          ticket['userName'],
+          ticket['gender'],
+          ticket['eventTitle_en'],
         );
+        final now = DateTime.now().toIso8601String();
+        try {
+          await FirebaseFirestore.instance
+              .collection('reservations')
+              .doc(code)
+              .update({'checkedInAt': now, 'isScanned': true});
+          ticket['checkedInAt'] = now;
+          if (!mounted) return;
+          _showResultDialog(checkInSuccessTitle, ticketDetailsMsg, true);
+        } catch (e) {
+          debugPrint('Check-in update error: $e');
+          if (!mounted) return;
+          _showResultDialog(
+            'Check-in Failed',
+            'Could not confirm check-in. Make sure you are logged in as admin.\nError: $e',
+            false,
+          );
+        }
       } else {
         final checkedInTime = DateTime.parse(ticket['checkedInAt']);
         final timeStr =
             '${checkedInTime.hour}:${checkedInTime.minute.toString().padLeft(2, '0')}';
-        _showResultDialog(
-          AppText.alreadyCheckedIn(context),
-          AppText.alreadyCheckedInAt(context, timeStr),
-          false,
-        );
+        final alreadyAtMsg = AppText.alreadyCheckedInAt(context, timeStr);
+        _showResultDialog(alreadyCheckedInTitle, alreadyAtMsg, false);
       }
     }
 

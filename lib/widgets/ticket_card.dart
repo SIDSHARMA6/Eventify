@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../providers/language_provider.dart';
 import '../utils/app_text.dart';
+import '../utils/language_helper.dart';
 import '../widgets/gender_icon.dart';
 
 class TicketCard extends StatelessWidget {
@@ -20,10 +21,14 @@ class TicketCard extends StatelessWidget {
     context.watch<LanguageProvider>(); // rebuild when language changes
     final languageProvider =
         Provider.of<LanguageProvider>(context, listen: false);
-    final isEnglish = languageProvider.currentLanguage == 'en';
+    final isJapanese = languageProvider.currentLanguage == 'ja';
 
-    final eventTitle =
-        isEnglish ? ticket['eventTitle_en'] : ticket['eventTitle_ja'];
+    // Use helper with fallback
+    final eventTitle = LanguageHelper.getText(
+      ticket['eventTitle_en'],
+      ticket['eventTitle_ja'],
+      isJapanese,
+    );
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -36,14 +41,26 @@ class TicketCard extends StatelessWidget {
             if (ticket['eventImage'] != null)
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
-                child: Image.asset(
-                  ticket['eventImage'],
-                  width: double.infinity,
-                  height: 150,
-                  fit: BoxFit.cover,
-                  cacheWidth: 600,
-                  cacheHeight: 300,
-                ),
+                child: (ticket['eventImage'] as String).startsWith('http')
+                    ? Image.network(
+                        ticket['eventImage'],
+                        width: double.infinity,
+                        height: 150,
+                        fit: BoxFit.cover,
+                        errorBuilder: (ctx, err, st) => Container(
+                          height: 150,
+                          color: Colors.grey.withValues(alpha: 0.3),
+                          child: const Icon(Icons.broken_image, size: 50),
+                        ),
+                      )
+                    : Image.asset(
+                        ticket['eventImage'],
+                        width: double.infinity,
+                        height: 150,
+                        fit: BoxFit.cover,
+                        cacheWidth: 600,
+                        cacheHeight: 300,
+                      ),
               ),
 
             const SizedBox(height: 12),

@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'dart:math';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 import '../../utils/app_text.dart';
-import '../../data/dummy_data.dart';
-import '../../providers/demo_data_provider.dart';
 import '../../providers/language_provider.dart';
-import '../../services/local_storage_service.dart';
+import '../../services/event_service.dart';
+import '../../services/cloudinary_service.dart';
 import '../../widgets/rich_text_editor.dart';
 import '../../widgets/gradient_app_bar.dart';
 import '../../widgets/gradient_button.dart';
@@ -59,17 +59,12 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   // Validation error tracking
   final Map<String, bool> _fieldErrors = {};
 
-  // Image lists (up to 10 images each)
-  List<String> _imagesEn = [];
-  List<String> _imagesJa = [];
+  // Image lists (up to 10 images each) - now stores File paths for new images
+  List<dynamic> _imagesEn = []; // Can be String (URL/asset) or File
+  List<dynamic> _imagesJa = [];
 
-  // Available demo images
-  final List<String> _availableImages = [
-    'assets/e1.jpg',
-    'assets/e2.jpg',
-    'assets/e3.jpg',
-    'assets/e4.jpg',
-  ];
+  final ImagePicker _imagePicker = ImagePicker();
+  bool _isSaving = false; // Loading state for save button
 
   bool get _isEditing => widget.event != null;
 
@@ -166,10 +161,6 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     super.initState();
     if (_isEditing) {
       _loadEventData();
-    } else {
-      // Default images for new events
-      _imagesEn = ['assets/e1.jpg', 'assets/e2.jpg'];
-      _imagesJa = ['assets/e1.jpg', 'assets/e2.jpg'];
     }
   }
 
@@ -191,9 +182,23 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     _femaleLimitController.text = event['femaleLimit']?.toString() ?? '50';
     _mapLinkController.text = event['mapLink'] ?? '';
 
-    // Load existing images
-    _imagesEn = List<String>.from(event['images_en'] ?? []);
-    _imagesJa = List<String>.from(event['images_ja'] ?? []);
+    // Load existing images — only keep valid http/https URLs (skip asset paths)
+    _imagesEn = [];
+    _imagesJa = [];
+
+    final imagesEnRaw = event['images_en'];
+    if (imagesEnRaw is List) {
+      _imagesEn = List<dynamic>.from(
+        imagesEnRaw.whereType<String>().where((s) => s.startsWith('http')),
+      );
+    }
+
+    final imagesJaRaw = event['images_ja'];
+    if (imagesJaRaw is List) {
+      _imagesJa = List<dynamic>.from(
+        imagesJaRaw.whereType<String>().where((s) => s.startsWith('http')),
+      );
+    }
 
     // Load existing date and time
     try {
@@ -258,185 +263,228 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   }
 
   Future<void> _saveEvent() async {
+    if (_isSaving) return; // Prevent multiple clicks
+
     // Clear previous errors
     setState(() {
       _fieldErrors.clear();
     });
 
-    // Validation with specific error messages
-    final List<String> missingFields = [];
+    // Simple validation - Japanese fields are OPTIONAL
+    final List<String> errors = [];
 
+    // English fields are required
     if (_titleEnController.text.trim().isEmpty) {
-      missingFields.add('Title (English)');
+      errors.add('Title (English) is required');
       _fieldErrors['titleEn'] = true;
     }
-    if (_titleJaController.text.trim().isEmpty) {
-      missingFields.add('Title (Japanese)');
-      _fieldErrors['titleJa'] = true;
+
+    if (_descEnController.text.trim().isEmpty) {
+      errors.add('Description (English) is required');
+      _fieldErrors['descEn'] = true;
     }
+
     if (_locationEnController.text.trim().isEmpty) {
-      missingFields.add('Location (English)');
+      errors.add('Location (English) is required');
       _fieldErrors['locationEn'] = true;
     }
-    if (_locationJaController.text.trim().isEmpty) {
-      missingFields.add('Location (Japanese)');
-      _fieldErrors['locationJa'] = true;
-    }
+
     if (_venueEnController.text.trim().isEmpty) {
-      missingFields.add('Venue Name (English)');
+      errors.add('Venue (English) is required');
       _fieldErrors['venueEn'] = true;
     }
-    if (_venueJaController.text.trim().isEmpty) {
-      missingFields.add('Venue Name (Japanese)');
-      _fieldErrors['venueJa'] = true;
-    }
+
     if (_imagesEn.isEmpty) {
-      missingFields.add('Images (English)');
+      errors.add('At least one English image is required');
       _fieldErrors['imagesEn'] = true;
     }
-    if (_imagesJa.isEmpty) {
-      missingFields.add('Images (Japanese)');
-      _fieldErrors['imagesJa'] = true;
-    }
+
     if (_malePriceController.text.trim().isEmpty) {
-      missingFields.add('Male Price');
+      errors.add('Male Price is required');
       _fieldErrors['malePrice'] = true;
     }
+
     if (_femalePriceController.text.trim().isEmpty) {
-      missingFields.add('Female Price');
+      errors.add('Female Price is required');
       _fieldErrors['femalePrice'] = true;
     }
+
     if (_maleLimitController.text.trim().isEmpty) {
-      missingFields.add('Male Ticket Limit');
+      errors.add('Male Limit is required');
       _fieldErrors['maleLimit'] = true;
     }
+
     if (_femaleLimitController.text.trim().isEmpty) {
-      missingFields.add('Female Ticket Limit');
+      errors.add('Female Limit is required');
       _fieldErrors['femaleLimit'] = true;
     }
 
-    if (missingFields.isNotEmpty) {
+    if (errors.isNotEmpty) {
       setState(() {}); // Trigger rebuild to show red borders
 
-      // Show detailed error message
-      final errorMessage = missingFields.length == 1
-          ? 'Missing field: ${missingFields[0]}'
-          : 'Missing fields:\n${missingFields.map((f) => '• $f').join('\n')}';
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(errorMessage),
-          backgroundColor: Theme.of(context).colorScheme.error,
-          duration: const Duration(seconds: 4),
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errors.join('\n')),
+            backgroundColor: Theme.of(context).colorScheme.error,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
       return;
     }
 
-    if (_isEditing) {
-      // Update existing event
-      final event = widget.event!;
-      final newDate = _selectedDate.toIso8601String().substring(0, 10);
+    setState(() => _isSaving = true);
 
-      event['date'] = newDate;
+    try {
+      // Upload images to Cloudinary and get URLs
+      final uploadedImagesEn = await _uploadImages(_imagesEn, 'en');
+      final uploadedImagesJa = await _uploadImages(_imagesJa, 'ja');
 
-      event['title_en'] = _titleEnController.text;
-      event['title_ja'] = _titleJaController.text;
-      event['description_en'] = _descEnController.text;
-      event['description_ja'] = _descJaController.text;
-      event['location_en'] = _locationEnController.text;
-      event['location_ja'] = _locationJaController.text;
-      event['venueName_en'] = _venueEnController.text;
-      event['venueName_ja'] = _venueJaController.text;
-      event['venueName'] =
-          _venueEnController.text; // Keep for backward compatibility
-      event['venueAddress_en'] = _venueAddressEnController.text;
-      event['venueAddress_ja'] = _venueAddressJaController.text;
-      event['malePrice'] = int.tryParse(_malePriceController.text) ?? 0;
-      event['femalePrice'] = int.tryParse(_femalePriceController.text) ?? 0;
-      event['maleLimit'] = int.tryParse(_maleLimitController.text) ?? 50;
-      event['femaleLimit'] = int.tryParse(_femaleLimitController.text) ?? 50;
-      event['images_en'] = _imagesEn;
-      event['images_ja'] = _imagesJa;
-      event['mapLink'] = _mapLinkController.text.trim();
-      final startTimeStr =
-          '${_selectedTime.hour.toString().padLeft(2, '0')}:${_selectedTime.minute.toString().padLeft(2, '0')}';
-      final endTimeStr =
-          '${_selectedEndTime.hour.toString().padLeft(2, '0')}:${_selectedEndTime.minute.toString().padLeft(2, '0')}';
-      event['startTime'] = startTimeStr;
-      event['endTime'] = endTimeStr;
-      event['endDate'] = _selectedEndDate.toIso8601String().substring(0, 10);
-    } else {
-      final baseEvent = {
-        'title_en': _titleEnController.text,
-        'title_ja': _titleJaController.text,
-        'description_en': _descEnController.text,
-        'description_ja': _descJaController.text,
-        'images_en': _imagesEn,
-        'images_ja': _imagesJa,
-        'location_en': _locationEnController.text,
-        'location_ja': _locationJaController.text,
-        'startTime': '18:00',
-        'endTime': '22:00',
-        'venueName_en': _venueEnController.text,
-        'venueName_ja': _venueJaController.text,
-        'venueName': _venueEnController.text, // Keep for backward compatibility
-        'venueAddress_en': _venueAddressEnController.text,
-        'venueAddress_ja': _venueAddressJaController.text,
-        'mapLink': _mapLinkController.text.trim().isEmpty
-            ? 'https://maps.google.com'
-            : _mapLinkController.text.trim(),
-        'malePrice': int.tryParse(_malePriceController.text) ?? 0,
-        'femalePrice': int.tryParse(_femalePriceController.text) ?? 0,
-        'maleLimit': int.tryParse(_maleLimitController.text) ?? 50,
-        'femaleLimit': int.tryParse(_femaleLimitController.text) ?? 50,
-        'maleBooked': 0,
-        'femaleBooked': 0,
-        'isHidden': false,
-        'createdBy': widget.creatorId,
-      };
+      debugPrint('✅ Upload complete!');
+      debugPrint('📊 English URLs: ${uploadedImagesEn.length}');
+      debugPrint('📊 Japanese URLs: ${uploadedImagesJa.length}');
 
-      if (_isRecurring && _recurringDateTimes.isNotEmpty) {
-        // One event per manually-picked date+time
-        for (int i = 0; i < _recurringDateTimes.length; i++) {
-          final dt = _recurringDateTimes[i];
-          final timeStr =
-              '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
-          final copy = Map<String, dynamic>.from(baseEvent);
-          copy['id'] = 'EVENT-${Random().nextInt(999999)}-$i';
-          copy['date'] = dt.toIso8601String().substring(0, 10);
-          copy['startTime'] = timeStr;
-          copy['isRecurring'] = true;
-          copy['recurringLabel'] = 'Recurring';
-          DummyData.events.add(copy);
-        }
+      if (_isEditing) {
+        final eventId = widget.event!['id'] as String;
+        final startTimeStr =
+            '${_selectedTime.hour.toString().padLeft(2, '0')}:${_selectedTime.minute.toString().padLeft(2, '0')}';
+        final endTimeStr =
+            '${_selectedEndTime.hour.toString().padLeft(2, '0')}:${_selectedEndTime.minute.toString().padLeft(2, '0')}';
+
+        await EventService().updateEvent(eventId, {
+          'title_en': _titleEnController.text,
+          'title_ja': _titleJaController.text,
+          'description_en': _descEnController.text,
+          'description_ja': _descJaController.text,
+          'location_en': _locationEnController.text,
+          'location_ja': _locationJaController.text,
+          'venueName_en': _venueEnController.text,
+          'venueName_ja': _venueJaController.text,
+          'venueAddress_en': _venueAddressEnController.text,
+          'venueAddress_ja': _venueAddressJaController.text,
+          'images_en': uploadedImagesEn,
+          'images_ja': uploadedImagesJa,
+          'mapLink': _mapLinkController.text.trim(),
+          'malePrice': int.tryParse(_malePriceController.text) ?? 0,
+          'femalePrice': int.tryParse(_femalePriceController.text) ?? 0,
+          'maleLimit': int.tryParse(_maleLimitController.text) ?? 50,
+          'femaleLimit': int.tryParse(_femaleLimitController.text) ?? 50,
+          'date': _selectedDate.toIso8601String().substring(0, 10),
+          'endDate': _selectedEndDate.toIso8601String().substring(0, 10),
+          'startTime': startTimeStr,
+          'endTime': endTimeStr,
+        });
       } else {
         final startTimeStr =
             '${_selectedTime.hour.toString().padLeft(2, '0')}:${_selectedTime.minute.toString().padLeft(2, '0')}';
         final endTimeStr =
             '${_selectedEndTime.hour.toString().padLeft(2, '0')}:${_selectedEndTime.minute.toString().padLeft(2, '0')}';
-        baseEvent['id'] = 'EVENT-${Random().nextInt(9999)}';
-        baseEvent['date'] = _selectedDate.toIso8601String().substring(0, 10);
-        baseEvent['endDate'] =
-            _selectedEndDate.toIso8601String().substring(0, 10);
-        baseEvent['startTime'] = startTimeStr;
-        baseEvent['endTime'] = endTimeStr;
-        DummyData.events.add(baseEvent);
+
+        final baseEvent = {
+          'title_en': _titleEnController.text,
+          'title_ja': _titleJaController.text,
+          'description_en': _descEnController.text,
+          'description_ja': _descJaController.text,
+          'images_en': uploadedImagesEn,
+          'images_ja': uploadedImagesJa,
+          'location_en': _locationEnController.text,
+          'location_ja': _locationJaController.text,
+          'venueName_en': _venueEnController.text,
+          'venueName_ja': _venueJaController.text,
+          'venueAddress_en': _venueAddressEnController.text,
+          'venueAddress_ja': _venueAddressJaController.text,
+          'mapLink': _mapLinkController.text.trim().isEmpty
+              ? 'https://maps.google.com'
+              : _mapLinkController.text.trim(),
+          'malePrice': int.tryParse(_malePriceController.text) ?? 0,
+          'femalePrice': int.tryParse(_femalePriceController.text) ?? 0,
+          'maleLimit': int.tryParse(_maleLimitController.text) ?? 50,
+          'femaleLimit': int.tryParse(_femaleLimitController.text) ?? 50,
+          'maleBooked': 0,
+          'femaleBooked': 0,
+          'isHidden': false,
+          'createdBy': widget.creatorId,
+        };
+
+        if (_isRecurring && _recurringDateTimes.isNotEmpty) {
+          for (final dt in _recurringDateTimes) {
+            final copy = Map<String, dynamic>.from(baseEvent);
+            copy['date'] = dt.toIso8601String().substring(0, 10);
+            copy['startTime'] =
+                '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+            copy['isRecurring'] = true;
+            copy['recurringLabel'] = 'Recurring';
+            await EventService().createEvent(copy);
+          }
+        } else {
+          baseEvent['date'] = _selectedDate.toIso8601String().substring(0, 10);
+          baseEvent['endDate'] =
+              _selectedEndDate.toIso8601String().substring(0, 10);
+          baseEvent['startTime'] = startTimeStr;
+          baseEvent['endTime'] = endTimeStr;
+          await EventService().createEvent(baseEvent);
+        }
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(AppText.success(context))),
+        );
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error saving event: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
+    }
+  }
+
+  /// Upload images to Cloudinary and return list of download URLs
+  Future<List<String>> _uploadImages(
+      List<dynamic> images, String language) async {
+    final List<String> urls = [];
+
+    for (var image in images) {
+      if (image is String && image.startsWith('http')) {
+        // Already a valid Cloudinary/network URL — keep it
+        urls.add(image);
+      } else if (image is File) {
+        // Upload to Cloudinary
+        try {
+          debugPrint('📤 Uploading image to Cloudinary...');
+          final url = await CloudinaryService().uploadImage(
+            image,
+            'event_images/$language',
+          );
+          urls.add(url);
+          debugPrint('✅ Upload successful: ${url.substring(0, 50)}...');
+        } catch (e) {
+          // If upload fails, skip this image
+          debugPrint('❌ Failed to upload image: $e');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Failed to upload image: $e'),
+                backgroundColor: Theme.of(context).colorScheme.error,
+              ),
+            );
+          }
+        }
       }
     }
 
-    // Save to SharedPreferences
-    await LocalStorageService.saveEvents();
-
-    if (mounted) {
-      // Notify other screens to refresh
-      Provider.of<DemoDataProvider>(context, listen: false).notifyDataChanged();
-      // Show snackbar BEFORE popping (context is still valid here)
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppText.success(context))),
-      );
-      Navigator.pop(context, true); // Return true to refresh dashboard
-    }
+    debugPrint('📊 Total URLs: ${urls.length}');
+    return urls;
   }
 
   @override
@@ -578,28 +626,10 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               focusNode: _titleJaFocus,
               textInputAction: TextInputAction.next,
               onSubmitted: (_) => _locationEnFocus.requestFocus(),
-              decoration: InputDecoration(
-                labelText: 'Title (Japanese) *',
-                prefixIcon: const Icon(Icons.title),
-                errorText: _fieldErrors['titleJa'] == true
-                    ? 'This field is required'
-                    : null,
-                border: _fieldErrors['titleJa'] == true
-                    ? const OutlineInputBorder(
-                        borderSide: BorderSide(color: Colors.red, width: 2),
-                      )
-                    : null,
-                enabledBorder: _fieldErrors['titleJa'] == true
-                    ? const OutlineInputBorder(
-                        borderSide: BorderSide(color: Colors.red, width: 2),
-                      )
-                    : null,
+              decoration: const InputDecoration(
+                labelText: 'Title (Japanese)',
+                prefixIcon: Icon(Icons.title),
               ),
-              onChanged: (value) {
-                if (_fieldErrors['titleJa'] == true && value.isNotEmpty) {
-                  setState(() => _fieldErrors.remove('titleJa'));
-                }
-              },
             ),
             const SizedBox(height: 16),
             RichTextEditor(
@@ -614,60 +644,21 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               focusNode: _locationJaFocus,
               textInputAction: TextInputAction.next,
               onSubmitted: (_) => _venueEnFocus.requestFocus(),
-              decoration: InputDecoration(
-                labelText: 'Location (Japanese) *',
-                prefixIcon: const Icon(Icons.location_on),
-                errorText: _fieldErrors['locationJa'] == true
-                    ? 'This field is required'
-                    : null,
-                border: _fieldErrors['locationJa'] == true
-                    ? const OutlineInputBorder(
-                        borderSide: BorderSide(color: Colors.red, width: 2),
-                      )
-                    : null,
-                enabledBorder: _fieldErrors['locationJa'] == true
-                    ? const OutlineInputBorder(
-                        borderSide: BorderSide(color: Colors.red, width: 2),
-                      )
-                    : null,
+              decoration: const InputDecoration(
+                labelText: 'Location (Japanese)',
+                prefixIcon: Icon(Icons.location_on),
               ),
-              onChanged: (value) {
-                if (_fieldErrors['locationJa'] == true && value.isNotEmpty) {
-                  setState(() => _fieldErrors.remove('locationJa'));
-                }
-              },
             ),
 
             const SizedBox(height: 16),
 
             // Japanese Images Section
-            Row(
-              children: [
-                Text(
-                  'Images (Japanese) - Up to 10 *',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: _fieldErrors['imagesJa'] == true
-                            ? Colors.red
-                            : null,
-                      ),
-                ),
-                if (_fieldErrors['imagesJa'] == true) ...[
-                  const SizedBox(width: 8),
-                  const Icon(Icons.error, color: Colors.red, size: 20),
-                ],
-              ],
+            Text(
+              'Images (Japanese) - Up to 10',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
             ),
-            if (_fieldErrors['imagesJa'] == true)
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  'At least one image is required',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Colors.red,
-                      ),
-                ),
-              ),
             const SizedBox(height: 8),
             _buildImageSelector(false),
 
@@ -717,28 +708,10 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               focusNode: _venueJaFocus,
               textInputAction: TextInputAction.next,
               onSubmitted: (_) => _venueAddressEnFocus.requestFocus(),
-              decoration: InputDecoration(
-                labelText: 'Venue Name (Japanese) *',
-                prefixIcon: const Icon(Icons.place),
-                errorText: _fieldErrors['venueJa'] == true
-                    ? 'This field is required'
-                    : null,
-                border: _fieldErrors['venueJa'] == true
-                    ? const OutlineInputBorder(
-                        borderSide: BorderSide(color: Colors.red, width: 2),
-                      )
-                    : null,
-                enabledBorder: _fieldErrors['venueJa'] == true
-                    ? const OutlineInputBorder(
-                        borderSide: BorderSide(color: Colors.red, width: 2),
-                      )
-                    : null,
+              decoration: const InputDecoration(
+                labelText: 'Venue Name (Japanese)',
+                prefixIcon: Icon(Icons.place),
               ),
-              onChanged: (value) {
-                if (_fieldErrors['venueJa'] == true && value.isNotEmpty) {
-                  setState(() => _fieldErrors.remove('venueJa'));
-                }
-              },
             ),
 
             const SizedBox(height: 16),
@@ -1088,9 +1061,21 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
 
             // Save Button
             GradientButton(
-              onPressed: _saveEvent,
+              onPressed: _isSaving ? null : _saveEvent,
               padding: const EdgeInsets.symmetric(vertical: 16),
-              child: Center(child: Text(AppText.save(context))),
+              child: Center(
+                child: _isSaving
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      )
+                    : Text(AppText.save(context)),
+              ),
             ),
           ],
         ),
@@ -1112,7 +1097,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
             runSpacing: 8,
             children: images.asMap().entries.map((entry) {
               final index = entry.key;
-              final imagePath = entry.value;
+              final image = entry.value;
               return Stack(
                 children: [
                   Container(
@@ -1120,15 +1105,16 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                     height: 80,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.grey.shade300),
                     ),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(8),
-                      child: Image.asset(
-                        imagePath,
-                        fit: BoxFit.cover,
-                        cacheWidth: 160,
-                        cacheHeight: 160,
-                      ),
+                      child: image is File
+                          ? Image.file(image, fit: BoxFit.cover)
+                          : Image.network(image as String, fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) {
+                              return const Icon(Icons.broken_image, size: 40);
+                            }),
                     ),
                   ),
                   Positioned(
@@ -1139,6 +1125,9 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                         setState(() {
                           if (isEnglish) {
                             _imagesEn.removeAt(index);
+                            if (_imagesEn.isEmpty) {
+                              _fieldErrors['imagesEn'] = true;
+                            }
                           } else {
                             _imagesJa.removeAt(index);
                           }
@@ -1168,10 +1157,10 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         // Add Image Button
         if (images.length < maxImages)
           OutlinedButton.icon(
-            onPressed: () => _showImagePicker(isEnglish),
+            onPressed: () => _pickImage(isEnglish),
             icon: const Icon(Icons.add_photo_alternate),
             label: Text(
-              'Add Image (${images.length}/$maxImages)',
+              'Pick Image (${images.length}/$maxImages) - Max 3MB',
               style: const TextStyle(fontSize: 14),
             ),
           ),
@@ -1187,64 +1176,63 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     );
   }
 
-  void _showImagePicker(bool isEnglish) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(isEnglish
-            ? AppText.selectImageEn(context)
-            : AppText.selectImageJa(context)),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: GridView.builder(
-            shrinkWrap: true,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 8,
-              mainAxisSpacing: 8,
+  Future<void> _pickImage(bool isEnglish) async {
+    try {
+      debugPrint('📷 Opening image picker...');
+      final XFile? pickedFile = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1920,
+        maxHeight: 1920,
+        imageQuality: 85,
+      );
+
+      if (pickedFile == null) {
+        debugPrint('❌ No image selected');
+        return;
+      }
+
+      final file = File(pickedFile.path);
+      final fileSize = await file.length();
+
+      debugPrint('✅ Image picked successfully');
+      debugPrint('   Path: ${file.path}');
+      debugPrint('   Size: ${(fileSize / 1024 / 1024).toStringAsFixed(2)} MB');
+
+      // Check file size (3MB = 3 * 1024 * 1024 bytes)
+      if (fileSize > 3 * 1024 * 1024) {
+        debugPrint(
+            '❌ Image too large: ${(fileSize / 1024 / 1024).toStringAsFixed(2)} MB');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Image size must be less than 3MB'),
+              backgroundColor: Theme.of(context).colorScheme.error,
             ),
-            itemCount: _availableImages.length,
-            itemBuilder: (context, index) {
-              final imagePath = _availableImages[index];
-              return GestureDetector(
-                onTap: () {
-                  setState(() {
-                    if (isEnglish) {
-                      if (!_imagesEn.contains(imagePath)) {
-                        _imagesEn.add(imagePath);
-                      }
-                      // Clear error when image is added
-                      _fieldErrors.remove('imagesEn');
-                    } else {
-                      if (!_imagesJa.contains(imagePath)) {
-                        _imagesJa.add(imagePath);
-                      }
-                      // Clear error when image is added
-                      _fieldErrors.remove('imagesJa');
-                    }
-                  });
-                  Navigator.pop(context);
-                },
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.asset(
-                    imagePath,
-                    fit: BoxFit.cover,
-                    cacheWidth: 200,
-                    cacheHeight: 200,
-                  ),
-                ),
-              );
-            },
+          );
+        }
+        return;
+      }
+
+      setState(() {
+        if (isEnglish) {
+          _imagesEn.add(file);
+          _fieldErrors.remove('imagesEn');
+          debugPrint('✅ Added to English images. Total: ${_imagesEn.length}');
+        } else {
+          _imagesJa.add(file);
+          debugPrint('✅ Added to Japanese images. Total: ${_imagesJa.length}');
+        }
+      });
+    } catch (e) {
+      debugPrint('❌ Error picking image: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error picking image: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error,
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(AppText.cancel(context)),
-          ),
-        ],
-      ),
-    );
+        );
+      }
+    }
   }
 }

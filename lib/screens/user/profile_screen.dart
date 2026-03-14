@@ -96,24 +96,7 @@ class ProfileScreen extends StatelessWidget {
             ),
             trailing: const Icon(Icons.arrow_forward_ios, size: 16),
             onTap: () {
-              AppRoutes.navigateTo(context, AppRoutes.creatorDashboard);
-            },
-          ),
-
-          // Login with Admin
-          ListTile(
-            leading:
-                const GradientIcon(icon: Icons.admin_panel_settings_outlined),
-            title: Text(
-              AppText.loginWithAdmin(context),
-              style: TextStyle(
-                color: colorScheme.primary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-            onTap: () {
-              AppRoutes.navigateTo(context, AppRoutes.adminDashboard);
+              AppRoutes.navigateTo(context, AppRoutes.creatorLogin);
             },
           ),
 
@@ -126,6 +109,33 @@ class ProfileScreen extends StatelessWidget {
             trailing: const Icon(Icons.arrow_forward_ios, size: 16),
             onTap: () {
               AppRoutes.navigateTo(context, AppRoutes.aboutApp);
+            },
+          ),
+
+          // Event Collaboration Request
+          ListTile(
+            leading: const GradientIcon(icon: Icons.handshake_outlined),
+            title: Text(
+              Provider.of<LanguageProvider>(context, listen: false)
+                          .currentLanguage ==
+                      'en'
+                  ? 'Event Collaboration Request'
+                  : 'イベントコラボレーション依頼',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () async {
+              final url = Uri.parse(AppConstants.contactLineUrl);
+              try {
+                await launchUrl(url, mode: LaunchMode.externalApplication);
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Could not open LINE: $e')),
+                  );
+                }
+              }
             },
           ),
 

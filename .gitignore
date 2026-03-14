@@ -11,6 +11,8 @@
 .svn/
 .swiftpm/
 migrate_working_dir/
+Thumbs.db
+desktop.ini
 
 # IntelliJ related
 *.iml
@@ -18,10 +20,8 @@ migrate_working_dir/
 *.iws
 .idea/
 
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
+# VS Code
+.vscode/
 
 # Flutter/Dart/Pub related
 **/doc/api/
@@ -43,17 +43,100 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+/android/.gradle/
+/android/.kotlin/
+/android/app/build/
+/android/build/
+/android/gradle/
+/android/gradlew
+/android/gradlew.bat
+/android/local.properties
+
+# iOS
+/ios/Pods/
+/ios/.symlinks/
+/ios/Flutter/Flutter.framework
+/ios/Flutter/Flutter.podspec
+/ios/Flutter/Generated.xcconfig
+/ios/Flutter/app.flx
+/ios/Flutter/app.zip
+/ios/Flutter/flutter_assets/
+/ios/ServiceDefinitions.json
+/ios/Runner/GeneratedPluginRegistrant.*
+
+# Web
+/web/flutter_service_worker.js
+/web/manifest.json
+/web/version.json
+
+# Windows
+/windows/flutter/generated_plugin_registrant.cc
+/windows/flutter/generated_plugin_registrant.h
+/windows/flutter/generated_plugins.cmake
+
+# macOS
+/macos/Flutter/GeneratedPluginRegistrant.swift
+/macos/Flutter/Flutter-Debug.xcconfig
+/macos/Flutter/Flutter-Release.xcconfig
+/macos/Flutter/Flutter-Profile.xcconfig
+
+# Linux
+/linux/flutter/generated_plugin_registrant.cc
+/linux/flutter/generated_plugin_registrant.h
+/linux/flutter/generated_plugins.cmake
 
 # Firebase configuration files (contains sensitive API keys)
+# These are often excluded in public repositories but can be included in private ones.
 android/app/google-services.json
 ios/Runner/GoogleService-Info.plist
 lib/firebase_options.dart
+
+# Firebase service account keys (NEVER commit these)
+scripts/serviceAccount.json
+*-firebase-adminsdk-*.json
+eventify-*-firebase-adminsdk-*.json
 
 # Environment files
 .env
 .env.local
 .env.*.local
 
-# Local configuration
-android/local.properties
-ios/Flutter/flutter_export_environment.sh
+# Node modules
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Package files
+*.lock
+# For apps, it is recommended to commit pubspec.lock.
+# For packages, it should be ignored.
+# pubspec.lock
+
+# Coverage
+coverage/
+.test_coverage.dart
+
+# Exceptions to above rules
+!**/ios/**/default.mode1v3
+!**/ios/**/default.mode2v3
+!**/ios/**/default.pbxuser
+!**/ios/**/default.perspectivev3
+
+# Documentation and scratch files (Personal/Internal notes)
+*.md.resolved
+audit.md
+error.md
+cleint_points.md
+client_purposal.md
+ADMIN_APP_TESTING.md
+ADMIN_LOGIN_FIX.md
+FINAL_AUDIT_FIXES.md
+AUTOMATIC_EVENT_FILTERING.md
+APP_ARCHITECTURE.md
+DEPLOYMENT_GUIDE.md
+
+# Excel files
+*.xlsx
+
+# Example files
+*.example

@@ -1,7 +1,7 @@
 /// App Constants
 class AppConstants {
   // App Info
-  static const String appName = 'Best Event 🎉';
+  static const String appName = 'Best Evento 🎉';
   static const String appVersion = '1.0.0';
 
   // Default Values
@@ -14,8 +14,8 @@ class AppConstants {
   static const String keyDeviceId = 'device_id';
   static const String keyTickets = 'my_tickets';
 
-  // Dummy Data
-  static const String dummyImageUrl = 'https://picsum.photos/400/300';
+  // Fallback Data
+  static const String fallbackImageUrl = 'https://picsum.photos/400/300';
 
   // Pagination
   static const int eventsPerPage = 10;

@@ -3,189 +3,71 @@ import 'dart:math';
 import 'firebase_service.dart';
 import 'device_service.dart';
 import 'event_service.dart';
+import 'rate_limiter.dart';
 
 class TicketService {
-  final FirebaseService _firebase = FirebaseService();
-  final DeviceService _device = DeviceService();
-  final EventService _event = EventService();
+  final _firebase = FirebaseService();
+  final _device = DeviceService();
+  final _event = EventService();
+  final _rateLimiter = RateLimiter();
 
-  // Create reservation
-  Future<Map<String, dynamic>?> createReservation({
-    required String eventId,
-    required String userName,
-    required String gender,
-  }) async {
-    try {
-      final deviceId = await _device.getDeviceId();
+  Future<Map<String, dynamic>?> createReservation({required String eventId, required String userName, required String gender}) async {
+    final deviceId = await _device.getDeviceId();
+    if (!_rateLimiter.isAllowed(deviceId, 'booking')) throw Exception('Too many attempts.');
+    
+    final docId = '${deviceId}_$eventId';
+    final event = await _event.getEventById(eventId) ?? (throw Exception('Event not found'));
 
-      // Check if already booked
-      final existing = await hasExistingReservation(deviceId, eventId);
-      if (existing) {
-        throw Exception('You already have a ticket for this event');
-      }
+    final limit = (gender == 'male' ? event['maleLimit'] : event['femaleLimit']) as int? ?? 0;
+    final booked = (gender == 'male' ? event['maleBooked'] : event['femaleBooked']) as int? ?? 0;
 
-      // Check gender limit
-      final event = await _event.getEventById(eventId);
-      if (event == null) {
-        throw Exception('Event not found');
-      }
+    if (limit <= 0) throw Exception('No tickets for $gender');
+    if (booked >= limit) throw Exception('Sold out for $gender');
 
-      final limit =
-          gender == 'male' ? event['maleLimit'] : event['femaleLimit'];
-      final booked =
-          gender == 'male' ? event['maleBooked'] : event['femaleBooked'];
+    final tId = 'TICKET-${List.generate(12, (_) => 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyz'[Random.secure().nextInt(62)]).join()}';
 
-      if (booked >= limit) {
-        throw Exception('Sorry, this event is sold out for $gender');
-      }
+    final reservation = {
+      'eventId': eventId, 'deviceId': deviceId, 'userName': userName, 'gender': gender,
+      'ticketId': tId, 'timestamp': DateTime.now().toIso8601String(),
+      'isCancelled': false, 'isScanned': false, 'isDeleted': false,
+      'checkedInAt': null, 'deletedAt': null, 'eventTitle_en': event['title_en'] ?? '',
+      'eventTitle_ja': event['title_ja'] ?? '', 'eventDate': event['date'] ?? '',
+      'eventTime': event['startTime'] ?? '', 'eventImage': (event['images_en'] as List?)?.firstOrNull,
+    };
 
-      // Generate ticket ID
-      final ticketId =
-          'TICKET-${Random().nextInt(999999).toString().padLeft(6, '0')}';
-
-      // Create reservation
-      final reservation = {
-        'eventId': eventId,
-        'deviceId': deviceId,
-        'userName': userName,
-        'gender': gender,
-        'ticketId': ticketId,
-        'timestamp': FieldValue.serverTimestamp(),
-        'isCancelled': false,
-      };
-
-      final docRef = await _firebase.reservationsCollection.add(reservation);
-
-      // Increment booked count
-      await _event.incrementBookedCount(eventId, gender);
-
-      // Return reservation with ID
-      reservation['id'] = docRef.id;
-      reservation['timestamp'] = DateTime.now().toIso8601String();
-
-      return reservation;
-    } catch (e) {
-      print('Create reservation error: $e');
-      rethrow;
-    }
-  }
-
-  // Check if device already has reservation for event
-  Future<bool> hasExistingReservation(String deviceId, String eventId) async {
-    try {
-      final snapshot = await _firebase.reservationsCollection
-          .where('deviceId', isEqualTo: deviceId)
-          .where('eventId', isEqualTo: eventId)
-          .where('isCancelled', isEqualTo: false)
-          .limit(1)
-          .get();
-
-      return snapshot.docs.isNotEmpty;
-    } catch (e) {
-      print('Check existing reservation error: $e');
-      return false;
-    }
-  }
-
-  // Get reservations by device
-  Stream<List<Map<String, dynamic>>> getMyReservations() {
-    return Stream.fromFuture(_device.getDeviceId()).asyncExpand((deviceId) {
-      return _firebase.reservationsCollection
-          .where('deviceId', isEqualTo: deviceId)
-          .where('isCancelled', isEqualTo: false)
-          .orderBy('timestamp', descending: true)
-          .snapshots()
-          .map((snapshot) {
-        return snapshot.docs.map((doc) {
-          final data = doc.data() as Map<String, dynamic>;
-          data['id'] = doc.id;
-          return data;
-        }).toList();
-      });
+    final docRef = _firebase.reservationsCollection.doc(docId);
+    await FirebaseFirestore.instance.runTransaction((tx) async {
+      final existing = await tx.get(docRef);
+      if (existing.exists && (existing.data() as Map?)?['isCancelled'] == false) throw Exception('Already have a ticket');
+      tx.set(docRef, reservation);
     });
+
+    await _event.incrementBookedCount(eventId, gender);
+    return {...reservation, 'id': docId, 'timestamp': DateTime.now().toIso8601String()};
   }
 
-  // Get reservations by event (for creator/admin)
-  Stream<List<Map<String, dynamic>>> getReservationsByEvent(String eventId) {
-    return _firebase.reservationsCollection
-        .where('eventId', isEqualTo: eventId)
-        .where('isCancelled', isEqualTo: false)
-        .orderBy('timestamp', descending: true)
-        .snapshots()
-        .map((snapshot) {
-      return snapshot.docs.map((doc) {
-        final data = doc.data() as Map<String, dynamic>;
-        data['id'] = doc.id;
-        return data;
-      }).toList();
+  Future<bool> hasExistingReservation(String dId, String eId) async =>
+      ((await _firebase.reservationsCollection.doc('${dId}_$eId').get()).data() as Map?)?['isCancelled'] == false;
+
+  List<Map<String, dynamic>> _mapDocs(QuerySnapshot s) => 
+      s.docs.map((d) => {...d.data() as Map<String, dynamic>, 'id': d.id}).toList();
+
+  Stream<List<Map<String, dynamic>>> getMyReservations() => Stream.fromFuture(_device.getDeviceId()).asyncExpand((dId) =>
+      _firebase.reservationsCollection.where('deviceId', isEqualTo: dId).where('isCancelled', isEqualTo: false).orderBy('timestamp', descending: true).snapshots().map(_mapDocs));
+
+  Stream<List<Map<String, dynamic>>> getReservationsByEvent(String eId) =>
+      _firebase.reservationsCollection.where('eventId', isEqualTo: eId).where('isCancelled', isEqualTo: false).orderBy('timestamp', descending: true).snapshots().map(_mapDocs);
+
+  Stream<List<Map<String, dynamic>>> getLatestBookings({int limit = 3}) =>
+      _firebase.reservationsCollection.where('isCancelled', isEqualTo: false).orderBy('timestamp', descending: true).limit(limit).snapshots().map(_mapDocs);
+
+  Future<void> cancelReservation(String resId, String eventId, String gender) async {
+    await _firebase.reservationsCollection.doc(resId).update({'isCancelled': true, 'cancelledAt': FieldValue.serverTimestamp()});
+    final eventRef = _firebase.eventsCollection.doc(eventId);
+    final field = gender == 'male' ? 'maleBooked' : 'femaleBooked';
+    await FirebaseFirestore.instance.runTransaction((tx) async {
+      final current = ((await tx.get(eventRef)).data() as Map?)?[field] as int? ?? 0;
+      if (current > 0) tx.update(eventRef, {field: current - 1});
     });
-  }
-
-  // Get latest bookings (for home screen)
-  Stream<List<Map<String, dynamic>>> getLatestBookings({int limit = 3}) {
-    return _firebase.reservationsCollection
-        .where('isCancelled', isEqualTo: false)
-        .orderBy('timestamp', descending: true)
-        .limit(limit)
-        .snapshots()
-        .map((snapshot) {
-      return snapshot.docs.map((doc) {
-        final data = doc.data() as Map<String, dynamic>;
-        data['id'] = doc.id;
-        return data;
-      }).toList();
-    });
-  }
-
-  // Cancel reservation
-  Future<void> cancelReservation(
-      String reservationId, String eventId, String gender) async {
-    try {
-      await _firebase.reservationsCollection.doc(reservationId).update({
-        'isCancelled': true,
-        'cancelledAt': FieldValue.serverTimestamp(),
-      });
-
-      // Decrement booked count
-      await _event.decrementBookedCount(eventId, gender);
-    } catch (e) {
-      print('Cancel reservation error: $e');
-      rethrow;
-    }
-  }
-
-  // Get reservation statistics for event
-  Future<Map<String, dynamic>> getEventStats(String eventId) async {
-    try {
-      final snapshot = await _firebase.reservationsCollection
-          .where('eventId', isEqualTo: eventId)
-          .where('isCancelled', isEqualTo: false)
-          .get();
-
-      int maleCount = 0;
-      int femaleCount = 0;
-
-      for (var doc in snapshot.docs) {
-        final gender = doc.get('gender') as String;
-        if (gender == 'male') {
-          maleCount++;
-        } else {
-          femaleCount++;
-        }
-      }
-
-      return {
-        'totalBookings': snapshot.docs.length,
-        'maleBookings': maleCount,
-        'femaleBookings': femaleCount,
-      };
-    } catch (e) {
-      print('Get event stats error: $e');
-      return {
-        'totalBookings': 0,
-        'maleBookings': 0,
-        'femaleBookings': 0,
-      };
-    }
   }
 }

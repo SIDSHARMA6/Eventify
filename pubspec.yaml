@@ -32,13 +32,15 @@ dependencies:
 
   # Icons
   cupertino_icons: ^1.0.8
+  font_awesome_flutter: ^11.0.0
   
-  # Firebase
-  firebase_core: ^2.24.0
-  firebase_auth: ^4.15.0
-  cloud_firestore: ^4.13.0
-  firebase_storage: ^11.5.0
-  firebase_messaging: ^14.7.0
+  # Firebase — v3 suite (fixes PigeonUserDetails crash on Android)
+  firebase_core: ^3.13.0
+  firebase_auth: ^5.5.0
+  cloud_firestore: ^5.6.0
+  firebase_messaging: ^15.2.4
+  cloudinary_public: ^0.21.0  # Free image hosting (25GB storage, 25GB bandwidth/month)
+  http: ^1.2.2  # Direct Cloudinary HTTP upload
   
   # State Management
   provider: ^6.1.1
@@ -47,6 +49,7 @@ dependencies:
   cached_network_image: ^3.3.0
   carousel_slider: ^5.0.0
   table_calendar: ^3.0.9
+  image_picker: ^1.0.7
   
   # Utilities
   shared_preferences: ^2.2.2
@@ -54,6 +57,7 @@ dependencies:
   share_plus: ^7.2.1
   qr_flutter: ^4.1.0
   mobile_scanner: ^5.2.3
+  flutter_local_notifications: ^18.0.1
   
   # Localization
   intl: ^0.18.1

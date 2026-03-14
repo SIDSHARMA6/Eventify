@@ -36,8 +36,10 @@ class AppRoutes {
   static const String eventDetails = '/event-details';
   static const String tickets = '/tickets';
   static const String profile = '/profile';
+  static const String adminProfile = '/admin-profile';
   static const String aboutApp = '/about-app';
   static const String privacyPolicy = '/privacy-policy';
+  static const String calendar = '/calendar';
 
   // ============================================
   // CREATOR ROUTES

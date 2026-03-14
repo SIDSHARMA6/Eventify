@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../utils/app_text.dart';
-import '../../data/dummy_data.dart';
-import '../../providers/demo_data_provider.dart';
+import '../../utils/language_helper.dart';
 import '../../providers/language_provider.dart';
-import '../../services/local_storage_service.dart';
+import '../../providers/auth_provider.dart';
+import '../../services/event_service.dart';
 import '../../widgets/gradient_app_bar.dart';
 import '../../widgets/gradient_button.dart';
+import '../../widgets/status_badge.dart';
 import '../admin/qr_scanner_screen.dart';
 import 'create_event_screen.dart';
 import 'event_stats_screen.dart';
@@ -26,43 +28,72 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
   @override
   void initState() {
     super.initState();
-    _loadCreatorId();
+    _verifyAndLoadCreatorId();
   }
 
-  Future<void> _loadCreatorId() async {
-    final prefs = await SharedPreferences.getInstance();
-    String? creatorId = prefs.getString('creator_id');
+  Future<void> _verifyAndLoadCreatorId() async {
+    final currentUser = FirebaseAuth.instance.currentUser;
 
-    // For demo mode, set a default creator ID if not exists
-    if (creatorId == null) {
-      creatorId = 'demo-creator-1';
-      await prefs.setString('creator_id', creatorId);
-      await prefs.setString('creator_email', 'demo@creator.com');
+    if (currentUser == null) {
+      if (mounted) Navigator.pushReplacementNamed(context, '/login');
+      return;
     }
 
-    setState(() {
-      _creatorId = creatorId;
-      _isLoading = false;
-    });
+    try {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUser.uid)
+          .get();
+
+      if (!userDoc.exists) {
+        await FirebaseAuth.instance.signOut();
+        if (mounted) Navigator.pushReplacementNamed(context, '/login');
+        return;
+      }
+
+      final role = userDoc.data()!['role'] as String? ?? '';
+      if (role != 'creator' && role != 'admin') {
+        await FirebaseAuth.instance.signOut();
+        if (mounted) Navigator.pushReplacementNamed(context, '/login');
+        return;
+      }
+
+      setState(() {
+        _creatorId = currentUser.uid;
+        _isLoading = false;
+      });
+    } catch (e) {
+      await FirebaseAuth.instance.signOut();
+      if (mounted) Navigator.pushReplacementNamed(context, '/login');
+    }
   }
 
-  List<Map<String, dynamic>> get _myEvents {
-    if (_creatorId == null) return [];
-    // Show events created by this creator OR events with no owner (seed events)
-    return DummyData.events.where((event) {
-      final createdBy = event['createdBy'];
-      return createdBy == _creatorId || createdBy == null || createdBy == '';
-    }).toList();
+  Stream<List<Map<String, dynamic>>> _myEventsStream() {
+    if (_creatorId == null) return const Stream.empty();
+    return EventService().getEventsByCreator(_creatorId!);
+  }
+
+  bool _isEventOutsideVisibleRange(Map<String, dynamic> event) {
+    try {
+      final now = DateTime.now();
+      final currentMonth = DateTime(now.year, now.month, 1);
+      final twoMonthsLater = DateTime(now.year, now.month + 2, 1);
+      final eventDate = DateTime.parse(event['date']);
+
+      // Event is outside the 2-month visible range on home screen
+      return eventDate.isBefore(currentMonth) ||
+          eventDate.isAfter(twoMonthsLater) ||
+          eventDate.isAtSameMomentAs(twoMonthsLater);
+    } catch (e) {
+      return false;
+    }
   }
 
   Future<void> _logout() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('creator_email');
-    await prefs.remove('creator_id');
-
-    if (mounted) {
-      Navigator.pop(context);
-    }
+    try {
+      await Provider.of<AuthProvider>(context, listen: false).logout();
+    } catch (_) {}
+    if (mounted) Navigator.pop(context);
   }
 
   Future<void> _deleteEvent(Map<String, dynamic> event) async {
@@ -70,7 +101,8 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: Text(AppText.confirmDeleteEvent(context)),
-        content: Text(AppText.confirmLogout(context)),
+        content: const Text(
+            'This will permanently delete the event and all its tickets. This action cannot be undone.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -87,52 +119,30 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
     );
 
     if (confirm == true) {
-      final eventId = event['id'];
-
-      // Mark all tickets for this event as deleted
-      for (var ticket in DummyData.tickets) {
-        if (ticket['eventId'] == eventId) {
-          ticket['isDeleted'] = true;
-          ticket['deletedAt'] = DateTime.now().toIso8601String();
+      try {
+        await EventService().deleteEvent(event['id']);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(AppText.success(context))),
+          );
         }
-      }
-
-      // Mark the event as deleted (soft delete)
-      setState(() {
-        event['isDeleted'] = true;
-        event['deletedAt'] = DateTime.now().toIso8601String();
-      });
-
-      // Persist and notify
-      await LocalStorageService.saveEvents();
-      await LocalStorageService.saveTickets();
-
-      if (mounted) {
-        Provider.of<DemoDataProvider>(context, listen: false)
-            .notifyDataChanged();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AppText.success(context))),
-        );
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e')),
+          );
+        }
       }
     }
   }
 
   Future<void> _toggleVisibility(Map<String, dynamic> event) async {
-    setState(() {
-      event['isHidden'] = !(event['isHidden'] ?? false);
-    });
-
-    await LocalStorageService.saveEvents();
-
+    final newHidden = !(event['isHidden'] ?? false);
+    await EventService().toggleEventVisibility(event['id'], newHidden);
     if (mounted) {
-      Provider.of<DemoDataProvider>(context, listen: false).notifyDataChanged();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            event['isHidden']
-                ? 'Event hidden successfully'
-                : 'Event shown successfully',
-          ),
+          content: Text(newHidden ? 'Event hidden' : 'Event visible'),
         ),
       );
     }
@@ -140,355 +150,344 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
 
   Future<void> _duplicateEvent(Map<String, dynamic> event) async {
     final duplicated = Map<String, dynamic>.from(event);
-    duplicated['id'] = 'EVENT-DUP-${DateTime.now().millisecondsSinceEpoch}';
+    duplicated.remove('id');
     duplicated['title_en'] = '${event['title_en']} (Copy)';
     duplicated['title_ja'] = '${event['title_ja']} (コピー)';
     duplicated['maleBooked'] = 0;
     duplicated['femaleBooked'] = 0;
     duplicated['isDeleted'] = false;
-    duplicated['isDuplicated'] = true; // Mark as duplicated
+    duplicated['isDuplicated'] = true;
 
-    setState(() {
-      DummyData.events.add(duplicated);
-    });
-
-    await LocalStorageService.saveEvents();
-
-    if (mounted) {
-      Provider.of<DemoDataProvider>(context, listen: false).notifyDataChanged();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppText.eventDuplicatedSuccess(context))),
-      );
+    try {
+      await EventService().createEvent(duplicated);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(AppText.eventDuplicatedSuccess(context))),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
     }
-  }
-
-  Widget _buildStatusBadge(String label, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 10,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
-    context.watch<LanguageProvider>(); // rebuild when language changes
+    context.watch<LanguageProvider>();
     if (_isLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, result) async {
-        if (didPop) return;
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: _myEventsStream(),
+      builder: (context, snapshot) {
+        final myEvents = snapshot.data ?? [];
 
-        final shouldLogout = await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: Text(AppText.logout(context)),
-            content: Text(AppText.confirmLogout(context)),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: Text(AppText.no(context)),
+        return PopScope(
+          canPop: false,
+          onPopInvokedWithResult: (didPop, result) async {
+            if (didPop) return;
+
+            final shouldLogout = await showDialog<bool>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: Text(AppText.logout(context)),
+                content: Text(AppText.confirmLogout(context)),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: Text(AppText.no(context)),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    child: Text(AppText.yes(context)),
+                  ),
+                ],
               ),
-              TextButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: Text(AppText.yes(context)),
+            );
+
+            if (shouldLogout == true && context.mounted) {
+              _logout();
+            }
+          },
+          child: Scaffold(
+            appBar: GradientAppBar(
+              title: Text(
+                AppText.creatorDashboard(context),
+                style: const TextStyle(color: Colors.white),
               ),
-            ],
-          ),
-        );
-
-        if (shouldLogout == true && context.mounted) {
-          _logout();
-        }
-      },
-      child: Scaffold(
-        appBar: GradientAppBar(
-          title: Text(
-            AppText.creatorDashboard(context),
-            style: const TextStyle(color: Colors.white),
-          ),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.logout),
-              onPressed: _logout,
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.logout),
+                  onPressed: _logout,
+                ),
+              ],
             ),
-          ],
-        ),
-        body: ListView(
-          physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.all(16),
-          children: [
-            // QR Scanner Button
-            GradientButtonIcon(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const QRScannerScreen(),
+            body: ListView(
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.all(16),
+              children: [
+                // QR Scanner Button — admin only
+                if (Provider.of<AuthProvider>(context, listen: false).isAdmin)
+                  GradientButtonIcon(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const QRScannerScreen(),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.qr_code_scanner),
+                    label: Text(AppText.scanTicketQR(context)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
-                );
-              },
-              icon: const Icon(Icons.qr_code_scanner),
-              label: Text(AppText.scanTicketQR(context)),
-              padding: const EdgeInsets.symmetric(vertical: 12),
-            ),
 
-            const SizedBox(height: 16),
+                const SizedBox(height: 16),
 
-            // Create Event Button
-            GradientButtonIcon(
-              onPressed: () async {
-                final result = await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) =>
-                        CreateEventScreen(creatorId: _creatorId!),
-                  ),
-                );
+                // Create Event Button
+                GradientButtonIcon(
+                  onPressed: () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            CreateEventScreen(creatorId: _creatorId!),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.add),
+                  label: Text(AppText.createEvent(context)),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                ),
 
-                if (result == true && mounted) {
-                  // Notify other screens to refresh
-                  Provider.of<DemoDataProvider>(context, listen: false)
-                      .notifyDataChanged();
-                  setState(() {}); // Refresh list
-                }
-              },
-              icon: const Icon(Icons.add),
-              label: Text(AppText.createEvent(context)),
-              padding: const EdgeInsets.symmetric(vertical: 16),
-            ),
+                const SizedBox(height: 24),
 
-            const SizedBox(height: 24),
+                Text(
+                  AppText.myEvents(context),
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
 
-            Text(
-              AppText.myEvents(context),
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-            ),
+                const SizedBox(height: 8),
 
-            const SizedBox(height: 8),
-
-            Text(
-              '${_myEvents.length} events created',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).textTheme.bodySmall?.color,
-                  ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // My Events List (Only creator's own events)
-            if (_myEvents.isEmpty)
-              Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(32),
-                  child: Column(
-                    children: [
-                      Icon(
-                        Icons.event_busy,
-                        size: 64,
+                Text(
+                  '${myEvents.length} events created',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: Theme.of(context).textTheme.bodySmall?.color,
                       ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'No events created yet',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                    ],
-                  ),
                 ),
-              )
-            else
-              ..._myEvents.map((event) {
-                final isDeleted = event['isDeleted'] ?? false;
-                final isHidden = event['isHidden'] ?? false;
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundImage: AssetImage(event['images_en'][0]),
-                    ),
-                    title: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            Provider.of<LanguageProvider>(context,
-                                            listen: false)
-                                        .currentLanguage ==
-                                    'en'
-                                ? event['title_en']
-                                : event['title_ja'],
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        // Status badges
-                        if (isDeleted)
-                          _buildStatusBadge('DELETED', Colors.red)
-                        else if (isHidden)
-                          _buildStatusBadge('HIDDEN', Colors.orange)
-                        else if (event['isDuplicated'] == true)
-                          _buildStatusBadge('DUPLICATED', Colors.blue)
-                        else
-                          _buildStatusBadge('ACTIVE', Colors.green),
-                      ],
-                    ),
-                    subtitle: Text('${event['date']} • ${event['startTime']}'),
-                    trailing: PopupMenuButton(
-                      itemBuilder: (context) => [
-                        // Only show Edit for non-deleted events
-                        if (!isDeleted)
-                          PopupMenuItem(
-                            child: Row(
-                              children: [
-                                const Icon(Icons.edit, size: 20),
-                                const SizedBox(width: 8),
-                                Text(AppText.edit(context)),
-                              ],
-                            ),
-                            onTap: () {
-                              WidgetsBinding.instance
-                                  .addPostFrameCallback((_) async {
-                                if (!mounted) return;
 
-                                final result = await Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => CreateEventScreen(
-                                      creatorId: _creatorId!,
-                                      event: event,
-                                    ),
-                                  ),
-                                );
+                const SizedBox(height: 16),
 
-                                if (result == true && mounted) {
-                                  Provider.of<DemoDataProvider>(context,
-                                          listen: false)
-                                      .notifyDataChanged();
-                                  setState(() {});
-                                }
-                              });
-                            },
+                // My Events List (Only creator's own events)
+                if (myEvents.isEmpty)
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Column(
+                        children: [
+                          Icon(
+                            Icons.event_busy,
+                            size: 64,
+                            color: Theme.of(context).textTheme.bodySmall?.color,
                           ),
-                        // Always show Event Stats
-                        PopupMenuItem(
-                          child: Row(
-                            children: [
-                              const Icon(Icons.bar_chart, size: 20),
-                              const SizedBox(width: 8),
-                              Text(AppText.eventStats(context)),
-                            ],
+                          const SizedBox(height: 16),
+                          Text(
+                            'No events created yet',
+                            style: Theme.of(context).textTheme.titleMedium,
                           ),
-                          onTap: () {
-                            WidgetsBinding.instance.addPostFrameCallback((_) {
-                              if (mounted) {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) =>
-                                        EventStatsScreen(event: event),
-                                  ),
-                                );
-                              }
-                            });
-                          },
+                        ],
+                      ),
+                    ),
+                  )
+                else
+                  ...myEvents.map((event) {
+                    final isHidden = event['isHidden'] ?? false;
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      child: ListTile(
+                        leading: CircleAvatar(
+                          backgroundImage: _getEventImage(event),
                         ),
-                        // Only show Hide/Show for non-deleted events
-                        if (!isDeleted)
-                          PopupMenuItem(
-                            child: Row(
-                              children: [
-                                Icon(
-                                  (event['isHidden'] ?? false)
-                                      ? Icons.visibility
-                                      : Icons.visibility_off,
-                                  size: 20,
+                        title: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                LanguageHelper.getEventTitle(
+                                  event,
+                                  Provider.of<LanguageProvider>(context,
+                                              listen: false)
+                                          .currentLanguage ==
+                                      'ja',
                                 ),
-                                const SizedBox(width: 8),
-                                Text((event['isHidden'] ?? false)
-                                    ? AppText.show(context)
-                                    : AppText.hide(context)),
-                              ],
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                            onTap: () {
-                              WidgetsBinding.instance
-                                  .addPostFrameCallback((_) async {
-                                if (mounted) {
-                                  await _toggleVisibility(event);
-                                }
-                              });
-                            },
-                          ),
-                        // Only show Duplicate for non-deleted events
-                        if (!isDeleted)
-                          PopupMenuItem(
-                            child: Row(
-                              children: [
-                                const Icon(Icons.copy, size: 20),
-                                const SizedBox(width: 8),
-                                Text(AppText.duplicate(context)),
-                              ],
+                            const SizedBox(width: 8),
+                            // Status badges
+                            if (isHidden)
+                              const StatusBadge(
+                                  label: 'HIDDEN', color: Colors.orange)
+                            else if (event['isDuplicated'] == true)
+                              const StatusBadge(
+                                  label: 'DUPLICATED', color: Colors.blue)
+                            else if (_isEventOutsideVisibleRange(event))
+                              const StatusBadge(
+                                  label: 'PAST/FUTURE', color: Colors.grey)
+                            else
+                              const StatusBadge(
+                                  label: 'ACTIVE', color: Colors.green),
+                          ],
+                        ),
+                        subtitle:
+                            Text('${event['date']} • ${event['startTime']}'),
+                        trailing: PopupMenuButton(
+                          itemBuilder: (context) => [
+                            // Edit
+                            PopupMenuItem(
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.edit, size: 20),
+                                  const SizedBox(width: 8),
+                                  Text(AppText.edit(context)),
+                                ],
+                              ),
+                              onTap: () {
+                                WidgetsBinding.instance
+                                    .addPostFrameCallback((_) async {
+                                  if (!mounted) return;
+                                  await Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => CreateEventScreen(
+                                        creatorId: _creatorId!,
+                                        event: event,
+                                      ),
+                                    ),
+                                  );
+                                });
+                              },
                             ),
-                            onTap: () {
-                              WidgetsBinding.instance
-                                  .addPostFrameCallback((_) async {
-                                if (mounted) {
-                                  await _duplicateEvent(event);
-                                }
-                              });
-                            },
-                          ),
-                        // Only show Delete for non-deleted events
-                        if (!isDeleted)
-                          PopupMenuItem(
-                            child: Row(
-                              children: [
-                                Icon(Icons.delete,
+                            // Always show Event Stats
+                            PopupMenuItem(
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.bar_chart, size: 20),
+                                  const SizedBox(width: 8),
+                                  Text(AppText.eventStats(context)),
+                                ],
+                              ),
+                              onTap: () {
+                                WidgetsBinding.instance
+                                    .addPostFrameCallback((_) {
+                                  if (mounted) {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) =>
+                                            EventStatsScreen(event: event),
+                                      ),
+                                    );
+                                  }
+                                });
+                              },
+                            ),
+                            // Hide/Show
+                            PopupMenuItem(
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    (event['isHidden'] ?? false)
+                                        ? Icons.visibility
+                                        : Icons.visibility_off,
                                     size: 20,
-                                    color: Theme.of(context).colorScheme.error),
-                                const SizedBox(width: 8),
-                                Text(
-                                  AppText.delete(context),
-                                  style: TextStyle(
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text((event['isHidden'] ?? false)
+                                      ? AppText.show(context)
+                                      : AppText.hide(context)),
+                                ],
+                              ),
+                              onTap: () {
+                                WidgetsBinding.instance
+                                    .addPostFrameCallback((_) async {
+                                  if (mounted) {
+                                    await _toggleVisibility(event);
+                                  }
+                                });
+                              },
+                            ),
+                            // Duplicate
+                            PopupMenuItem(
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.copy, size: 20),
+                                  const SizedBox(width: 8),
+                                  Text(AppText.duplicate(context)),
+                                ],
+                              ),
+                              onTap: () {
+                                WidgetsBinding.instance
+                                    .addPostFrameCallback((_) async {
+                                  if (mounted) {
+                                    await _duplicateEvent(event);
+                                  }
+                                });
+                              },
+                            ),
+                            // Delete
+                            PopupMenuItem(
+                              child: Row(
+                                children: [
+                                  Icon(Icons.delete,
+                                      size: 20,
                                       color:
                                           Theme.of(context).colorScheme.error),
-                                ),
-                              ],
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    AppText.delete(context),
+                                    style: TextStyle(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .error),
+                                  ),
+                                ],
+                              ),
+                              onTap: () {
+                                WidgetsBinding.instance
+                                    .addPostFrameCallback((_) {
+                                  if (mounted) {
+                                    _deleteEvent(event);
+                                  }
+                                });
+                              },
                             ),
-                            onTap: () {
-                              WidgetsBinding.instance.addPostFrameCallback((_) {
-                                if (mounted) {
-                                  _deleteEvent(event);
-                                }
-                              });
-                            },
-                          ),
-                      ],
-                    ),
-                  ),
-                );
-              }),
-          ],
-        ),
-      ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
+              ],
+            ),
+          ),
+        );
+      },
     );
+  }
+
+  ImageProvider _getEventImage(Map<String, dynamic> event) {
+    final images = event['images_en'];
+    if (images is List && images.isNotEmpty) {
+      final img = images[0]?.toString() ?? '';
+      if (img.startsWith('http')) return NetworkImage(img);
+    }
+    return const AssetImage('assets/images/placeholder.png');
   }
 }

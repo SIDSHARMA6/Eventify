@@ -3,18 +3,18 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../providers/language_provider.dart';
-import '../../providers/demo_data_provider.dart';
 import '../../utils/app_text.dart';
-import '../../utils/responsive.dart';
 import '../../utils/helpers.dart';
+import '../../utils/language_helper.dart';
 import '../../config/constants.dart';
-import '../../config/theme.dart';
 import '../../widgets/clickable_text.dart';
 import '../../widgets/gender_icon.dart';
-import '../../widgets/gradient_app_bar.dart';
+import '../../services/ticket_service.dart';
+import '../../services/device_service.dart';
+import '../../services/notification_service.dart';
 import 'booking_dialog.dart';
 
-class EventDetailsScreen extends StatelessWidget {
+class EventDetailsScreen extends StatefulWidget {
   final Map<String, dynamic> event;
 
   const EventDetailsScreen({
@@ -23,313 +23,529 @@ class EventDetailsScreen extends StatelessWidget {
   });
 
   @override
+  State<EventDetailsScreen> createState() => _EventDetailsScreenState();
+}
+
+class _EventDetailsScreenState extends State<EventDetailsScreen> {
+  bool _isCheckingBooking = true;
+  bool _isAlreadyBooked = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkExistingBooking();
+  }
+
+  Future<void> _checkExistingBooking() async {
+    try {
+      final deviceId = await DeviceService().getDeviceId();
+      final booked = await TicketService()
+          .hasExistingReservation(deviceId, widget.event['id']);
+      if (mounted) {
+        setState(() {
+          _isAlreadyBooked = booked;
+          _isCheckingBooking = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isCheckingBooking = false);
+    }
+  }
+
+  Future<void> _openBookingDialog() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => BookingDialog(event: widget.event),
+    );
+    if (mounted) {
+      await _checkExistingBooking();
+      if (result == true && mounted) {
+        setState(() => _isAlreadyBooked = true);
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    context.watch<LanguageProvider>(); // rebuild when language changes
-    context.watch<DemoDataProvider>(); // rebuild when booking counts change
+    context.watch<LanguageProvider>();
     final languageProvider =
         Provider.of<LanguageProvider>(context, listen: false);
-    final isEnglish = languageProvider.currentLanguage == 'en';
+    final isJapanese = languageProvider.currentLanguage == 'ja';
+    final isEnglish = !isJapanese;
 
-    final title = isEnglish ? event['title_en'] : event['title_ja'];
+    final title = LanguageHelper.getEventTitle(widget.event, isJapanese);
     final description =
-        isEnglish ? event['description_en'] : event['description_ja'];
-    final images = isEnglish ? event['images_en'] : event['images_ja'];
-    final malePrice = event['malePrice'] as int;
-    final femalePrice = event['femalePrice'] as int;
+        LanguageHelper.getEventDescription(widget.event, isJapanese);
+    final images = LanguageHelper.getImages(widget.event, isJapanese);
+    final malePrice = widget.event['malePrice'] as int;
+    final femalePrice = widget.event['femalePrice'] as int;
 
     return Scaffold(
-      appBar: GradientAppBar(
-        title: Text(
-          AppText.eventDetails(context),
-          style: const TextStyle(color: Colors.white),
-        ),
-        actions: [
-          // Share App Button
-          IconButton(
-            icon: const Icon(Icons.share),
-            onPressed: () {
-              final shareText = isEnglish
-                  ? 'Check out Best Event app!\n\nApp Store: ${AppConstants.appStoreUrl}\nGoogle Play: ${AppConstants.playStoreUrl}'
-                  : 'Best Eventアプリをチェック！\n\nApp Store: ${AppConstants.appStoreUrl}\nGoogle Play: ${AppConstants.playStoreUrl}';
-              Share.share(shareText);
-            },
-          ),
-        ],
-      ),
-      body: SingleChildScrollView(
-        physics: const BouncingScrollPhysics(),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // First Image Only
-            if ((images as List<String>).isNotEmpty)
-              Image.asset(
-                images[0],
-                width: double.infinity,
-                height: 250,
-                fit: BoxFit.cover,
-                cacheWidth: 800, // Optimize memory usage
-                cacheHeight: 500,
+      body: Stack(
+        children: [
+          // Full screen scrollable content
+          CustomScrollView(
+            slivers: [
+              // Image Header - No AppBar
+              SliverAppBar(
+                expandedHeight: 400,
+                pinned: false,
+                backgroundColor: Colors.transparent,
+                leading: Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: CircleAvatar(
+                    backgroundColor: Colors.black.withValues(alpha: 0.5),
+                    child: IconButton(
+                      icon: const Icon(Icons.arrow_back, color: Colors.white),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ),
+                ),
+                flexibleSpace: FlexibleSpaceBar(
+                  background: images.isNotEmpty
+                      ? (images[0].startsWith('http')
+                          ? Image.network(
+                              images[0],
+                              fit: BoxFit.cover,
+                              errorBuilder: (ctx, err, st) => Container(
+                                color: Colors.grey.withValues(alpha: 0.2),
+                              ),
+                            )
+                          : Image.asset(
+                              images[0],
+                              fit: BoxFit.cover,
+                            ))
+                      : Container(color: Colors.grey.withValues(alpha: 0.2)),
+                ),
               ),
 
-            Padding(
-              padding: EdgeInsets.all(Responsive.padding(context)),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Event Title
-                  Text(
-                    title,
-                    style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
+              // Bottom Sheet Style Content
+              SliverToBoxAdapter(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).scaffoldBackgroundColor,
+                    borderRadius:
+                        const BorderRadius.vertical(top: Radius.circular(30)),
                   ),
-
-                  const SizedBox(height: 16),
-
-                  // Date and Time
-                  _buildInfoRow(
-                    context,
-                    Icons.calendar_today,
-                    Helpers.formatDateWithJapaneseDay(
-                        event['date'], !isEnglish),
-                  ),
-
-                  const SizedBox(height: 8),
-
-                  _buildInfoRow(
-                    context,
-                    Icons.access_time,
-                    '${event['startTime']} - ${event['endTime']}',
-                  ),
-
-                  const SizedBox(height: 8),
-
-                  _buildInfoRow(
-                    context,
-                    Icons.location_on,
-                    isEnglish
-                        ? (event['venueName_en'] ?? event['venueName'] ?? '')
-                        : (event['venueName_ja'] ?? event['venueName'] ?? ''),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Venue Address Section
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context)
-                          .primaryColor
-                          .withValues(alpha: 0.05),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: Theme.of(context)
-                            .primaryColor
-                            .withValues(alpha: 0.2),
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
+                  child: Column(
+                    children: [
+                      // Content Container
+                      Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
-                            Icon(
-                              Icons.place,
-                              size: 18,
-                              color: Theme.of(context).primaryColor,
-                            ),
-                            const SizedBox(width: 8),
+                            // Event Title - Centered
                             Text(
-                              isEnglish ? 'Venue Address' : '会場住所',
+                              title,
                               style: Theme.of(context)
                                   .textTheme
-                                  .titleSmall
+                                  .headlineMedium
                                   ?.copyWith(
                                     fontWeight: FontWeight.bold,
-                                    color: Theme.of(context).primaryColor,
                                   ),
+                              textAlign: TextAlign.center,
                             ),
+
+                            const SizedBox(height: 20),
+
+                            // Share Button
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  final shareText = isEnglish
+                                      ? 'Check out Best Evento app!\n\nApp Store: ${AppConstants.appStoreUrl}\nGoogle Play: ${AppConstants.playStoreUrl}'
+                                      : 'Best Eventoアプリをチェック！\n\nApp Store: ${AppConstants.appStoreUrl}\nGoogle Play: ${AppConstants.playStoreUrl}';
+                                  Share.share(shareText);
+                                },
+                                icon: const Icon(Icons.share),
+                                label: Text(AppText.shareApp(context)),
+                                style: ElevatedButton.styleFrom(
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 14),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                              ),
+                            ),
+
+                            const SizedBox(height: 24),
+
+                            // Date & Location Section
+                            _buildSection(
+                              context,
+                              title: isEnglish ? 'Date & Location' : '日時と場所',
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    Helpers.formatDateWithJapaneseDay(
+                                        widget.event['date'], !isEnglish),
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleMedium
+                                        ?.copyWith(
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Row(
+                                    children: [
+                                      Icon(Icons.access_time,
+                                          size: 20,
+                                          color: Theme.of(context)
+                                              .textTheme
+                                              .bodyMedium
+                                              ?.color),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          '${Helpers.formatTo12Hour(widget.event['startTime'])} - ${Helpers.formatTo12Hour(widget.event['endTime'])}',
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodyLarge,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 12),
+                                  SizedBox(
+                                    width: double.infinity,
+                                    child: OutlinedButton.icon(
+                                      onPressed: () async {
+                                        // Schedule notification reminder
+                                        await NotificationService()
+                                            .scheduleEventReminder(
+                                          title,
+                                          DateTime.parse(widget.event['date']),
+                                          widget.event['startTime'],
+                                        );
+
+                                        if (!mounted) return;
+
+                                        Navigator.popUntil(
+                                            context, (route) => route.isFirst);
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              isEnglish
+                                                  ? 'Reminder set! You\'ll be notified 1 hour before the event'
+                                                  : 'リマインダーを設定しました！イベントの1時間前に通知します',
+                                            ),
+                                            duration:
+                                                const Duration(seconds: 3),
+                                          ),
+                                        );
+                                      },
+                                      icon: const Icon(Icons.calendar_today,
+                                          size: 18),
+                                      label:
+                                          Text(AppText.addToCalendar(context)),
+                                      style: OutlinedButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(
+                                            vertical: 12),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const Divider(height: 24),
+                                  Row(
+                                    children: [
+                                      Icon(Icons.location_on,
+                                          size: 20,
+                                          color:
+                                              Theme.of(context).primaryColor),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          isEnglish
+                                              ? (widget.event['location_en'] ??
+                                                  '')
+                                              : (widget.event['location_ja'] ??
+                                                  ''),
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodyLarge,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 12),
+                                  SizedBox(
+                                    width: double.infinity,
+                                    child: OutlinedButton.icon(
+                                      onPressed: () async {
+                                        final rawLink =
+                                            (widget.event['mapLink'] as String?)
+                                                ?.trim();
+                                        final link =
+                                            (rawLink == null || rawLink.isEmpty)
+                                                ? 'https://maps.google.com'
+                                                : rawLink;
+                                        final url = Uri.parse(link);
+                                        try {
+                                          await launchUrl(url,
+                                              mode: LaunchMode
+                                                  .externalApplication);
+                                        } catch (_) {}
+                                      },
+                                      icon: const Icon(Icons.map, size: 18),
+                                      label: Text(AppText.viewMap(context)),
+                                      style: OutlinedButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(
+                                            vertical: 12),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            const SizedBox(height: 20),
+
+                            // Venue Section
+                            _buildSection(
+                              context,
+                              title: AppText.venue(context),
+                              child: Row(
+                                children: [
+                                  const Text('𖠿',
+                                      style: TextStyle(fontSize: 24)),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          isEnglish
+                                              ? (widget.event['venueName_en'] ??
+                                                  widget.event['venueName'] ??
+                                                  '')
+                                              : (widget.event['venueName_ja'] ??
+                                                  widget.event['venueName'] ??
+                                                  ''),
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .titleMedium
+                                              ?.copyWith(
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          isEnglish
+                                              ? (widget.event[
+                                                      'venueAddress_en'] ??
+                                                  'Address not available')
+                                              : (widget.event[
+                                                      'venueAddress_ja'] ??
+                                                  '住所が利用できません'),
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodyMedium,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            const SizedBox(height: 20),
+
+                            // Description Section
+                            _buildSection(
+                              context,
+                              title: isEnglish ? 'About Event' : 'イベントについて',
+                              child: ClickableText(
+                                text: description,
+                                style: Theme.of(context).textTheme.bodyLarge,
+                              ),
+                            ),
+
+                            const SizedBox(height: 20),
+
+                            // Pricing Section
+                            _buildSection(
+                              context,
+                              title: AppText.pricing(context),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: _buildPriceCard(
+                                      context,
+                                      AppText.male(context),
+                                      malePrice,
+                                      true,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: _buildPriceCard(
+                                      context,
+                                      AppText.female(context),
+                                      femalePrice,
+                                      false,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            const SizedBox(height: 20),
                           ],
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          isEnglish
-                              ? (event['venueAddress_en'] ??
-                                  'Address not available')
-                              : (event['venueAddress_ja'] ?? '住所が利用できません'),
-                          style: Theme.of(context).textTheme.bodyMedium,
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  // View Map Button
-                  InkWell(
-                    onTap: () async {
-                      final rawLink = (event['mapLink'] as String?)?.trim();
-                      final link = (rawLink == null || rawLink.isEmpty)
-                          ? 'https://maps.google.com'
-                          : rawLink;
-                      final url = Uri.parse(link);
-                      try {
-                        await launchUrl(
-                          url,
-                          mode: LaunchMode.externalApplication,
-                        );
-                      } catch (_) {}
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 10,
                       ),
-                      decoration: BoxDecoration(
-                        gradient: AppTheme.pinkGradient,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(
-                            Icons.map,
-                            size: 20,
-                            color: Colors.white,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            AppText.viewMap(context),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w500,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
 
-                  const Divider(height: 32),
+                      // Remaining Images
+                      if (images.length > 1)
+                        ...images.skip(1).map((imagePath) {
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: imagePath.startsWith('http')
+                                ? Image.network(
+                                    imagePath,
+                                    width: double.infinity,
+                                    height: 250,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (ctx, err, st) => Container(
+                                      height: 250,
+                                      color: Colors.grey.withValues(alpha: 0.2),
+                                    ),
+                                  )
+                                : Image.asset(
+                                    imagePath,
+                                    width: double.infinity,
+                                    height: 250,
+                                    fit: BoxFit.cover,
+                                  ),
+                          );
+                        }),
 
-                  // Description with clickable links
-                  ClickableText(
-                    text: description,
-                    style: Theme.of(context).textTheme.bodyLarge,
-                  ),
-
-                  const Divider(height: 32),
-
-                  // Pricing
-                  Text(
-                    isEnglish ? 'Pricing' : '料金',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildPriceCard(
-                          context,
-                          AppText.male(context),
-                          malePrice,
-                          true, // isMale
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _buildPriceCard(
-                          context,
-                          AppText.female(context),
-                          femalePrice,
-                          false, // isMale
-                        ),
-                      ),
+                      const SizedBox(height: 80),
                     ],
                   ),
-
-                  const SizedBox(height: 24),
-                ],
+                ),
               ),
-            ),
-
-            // Remaining Images at Bottom
-            if ((images as List<String>).length > 1)
-              ...(images as List<String>).skip(1).map((imagePath) {
-                return Image.asset(
-                  imagePath,
-                  width: double.infinity,
-                  height: 250,
-                  fit: BoxFit.cover,
-                  cacheWidth: 800, // Optimize memory usage
-                  cacheHeight: 500,
-                );
-              }),
-          ],
-        ),
+            ],
+          ),
+        ],
       ),
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Container(
-            decoration: BoxDecoration(
-              gradient: AppTheme.appBarGradient,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: ElevatedButton(
-              onPressed: () {
-                showDialog(
-                  context: context,
-                  builder: (context) => BookingDialog(event: event),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.transparent,
-                shadowColor: Colors.transparent,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: Text(
-                AppText.reserveTicket(context),
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ),
+          child: _isCheckingBooking
+              ? Container(
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Center(
+                    child: SizedBox(
+                      height: 24,
+                      width: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                )
+              : _isAlreadyBooked
+                  ? Container(
+                      height: 56,
+                      decoration: BoxDecoration(
+                        color: Colors.green.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Colors.green.withValues(alpha: 0.5),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.check_circle,
+                              color: Colors.green, size: 22),
+                          const SizedBox(width: 10),
+                          Text(
+                            isJapanese
+                                ? 'チケット取得済み'
+                                : "You're In! Ticket Booked",
+                            style: const TextStyle(
+                              color: Colors.green,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : Container(
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFFE008B), Color(0xFFFF00FF)],
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: ElevatedButton(
+                        onPressed: _openBookingDialog,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.transparent,
+                          shadowColor: Colors.transparent,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          minimumSize: const Size(double.infinity, 56),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: Text(
+                          AppText.reserveTicket(context),
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
         ),
       ),
     );
   }
 
-  Widget _buildInfoRow(BuildContext context, IconData icon, String text) {
-    return Row(
-      children: [
-        Icon(
-          icon,
-          size: 20,
-          color: Theme.of(context).textTheme.bodySmall?.color,
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            text,
-            style: Theme.of(context).textTheme.bodyMedium,
+  Widget _buildSection(BuildContext context,
+      {required String title, required Widget child}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
           ),
-        ),
-      ],
+          const SizedBox(height: 12),
+          child,
+        ],
+      ),
     );
   }
 
@@ -343,15 +559,9 @@ class EventDetailsScreen extends StatelessWidget {
       ),
       child: Column(
         children: [
-          GenderIcon(
-            isMale: isMale,
-            size: 32,
-          ),
+          GenderIcon(isMale: isMale, size: 32),
           const SizedBox(height: 8),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
+          Text(label, style: Theme.of(context).textTheme.bodyMedium),
           const SizedBox(height: 4),
           Text(
             price == 0 ? AppText.free(context) : '¥$price',

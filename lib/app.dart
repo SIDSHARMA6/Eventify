@@ -5,14 +5,11 @@ import 'config/routes.dart';
 import 'providers/language_provider.dart';
 import 'providers/theme_provider.dart';
 import 'providers/auth_provider.dart';
-import 'providers/event_provider.dart';
-import 'providers/location_provider.dart';
-import 'providers/demo_data_provider.dart';
+import 'services/notification_service.dart';
 import 'utils/app_text.dart';
 import 'screens/user/home_screen.dart';
 import 'screens/user/my_tickets_screen.dart';
 import 'screens/user/profile_screen.dart';
-
 import 'widgets/bottom_nav.dart';
 
 class App extends StatefulWidget {
@@ -43,13 +40,10 @@ class _AppState extends State<App> with AutomaticKeepAliveClientMixin {
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
 
-        // If not on home screen, go back to home
         if (_currentIndex != 0) {
-          setState(() {
-            _currentIndex = 0;
-          });
+          setState(() => _currentIndex = 0);
         } else {
-          // Show exit confirmation dialog
+          final navigator = Navigator.of(context);
           AppRoutes.showConfirmDialog(
             context,
             title: 'Exit App',
@@ -58,7 +52,7 @@ class _AppState extends State<App> with AutomaticKeepAliveClientMixin {
             cancelText: AppText.no(context),
           ).then((confirmed) {
             if (confirmed == true) {
-              Navigator.of(context).popUntil((route) => route.isFirst);
+              navigator.popUntil((route) => route.isFirst);
             }
           });
         }
@@ -70,11 +64,7 @@ class _AppState extends State<App> with AutomaticKeepAliveClientMixin {
         ),
         bottomNavigationBar: BottomNav(
           currentIndex: _currentIndex,
-          onTap: (index) {
-            setState(() {
-              _currentIndex = index;
-            });
-          },
+          onTap: (index) => setState(() => _currentIndex = index),
         ),
       ),
     );
@@ -84,21 +74,25 @@ class _AppState extends State<App> with AutomaticKeepAliveClientMixin {
 class EventifyApp extends StatelessWidget {
   const EventifyApp({super.key});
 
+  static final GlobalKey<NavigatorState> navigatorKey =
+      GlobalKey<NavigatorState>();
+
   @override
   Widget build(BuildContext context) {
+    // Set navigator key for in-app notifications
+    NotificationService.navigatorKey = navigatorKey;
+
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => LanguageProvider()),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => AuthProvider()),
-        ChangeNotifierProvider(create: (_) => EventProvider()),
-        ChangeNotifierProvider(create: (_) => LocationProvider()),
-        ChangeNotifierProvider(create: (_) => DemoDataProvider()),
       ],
       child: Consumer2<ThemeProvider, LanguageProvider>(
-        builder: (context, themeProvider, languageProvider, child) {
+        builder: (context, themeProvider, _, __) {
           return MaterialApp(
-            title: 'Eventify',
+            navigatorKey: navigatorKey,
+            title: 'Best Evento',
             debugShowCheckedModeBanner: false,
             theme: AppTheme.lightTheme,
             darkTheme: AppTheme.darkTheme,

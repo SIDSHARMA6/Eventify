@@ -2,22 +2,29 @@ import 'package:intl/intl.dart';
 
 class Helpers {
   // Cache for formatted dates to avoid repeated parsing
-  static final Map<String, String> _dateCache = {};
   static final Map<String, String> _dateWithDayCache = {};
   static final Map<String, String> _dateTimeRangeCache = {};
 
-  static String formatDate(String dateString) {
-    if (_dateCache.containsKey(dateString)) {
-      return _dateCache[dateString]!;
-    }
-
+  /// Convert 24-hour time to 12-hour AM/PM format
+  /// Example: "18:00" -> "6:00 PM", "09:30" -> "9:30 AM"
+  static String formatTo12Hour(String time24) {
     try {
-      final date = DateTime.parse(dateString);
-      final formatted = DateFormat('MMM dd, yyyy').format(date);
-      _dateCache[dateString] = formatted;
-      return formatted;
+      final parts = time24.split(':');
+      if (parts.length != 2) return time24;
+
+      int hour = int.parse(parts[0]);
+      final minute = parts[1];
+
+      final period = hour >= 12 ? 'PM' : 'AM';
+      if (hour == 0) {
+        hour = 12;
+      } else if (hour > 12) {
+        hour -= 12;
+      }
+
+      return '$hour:$minute $period';
     } catch (e) {
-      return dateString;
+      return time24;
     }
   }
 
@@ -33,14 +40,10 @@ class Helpers {
       String formatted;
 
       if (isJapanese) {
-        // Japanese day characters
         const japaneseWeekdays = ['日', '月', '火', '水', '木', '金', '土'];
         final dayChar = japaneseWeekdays[date.weekday % 7];
-
-        // Format: 2026年2月28日 (金)
         formatted = '${date.year}年${date.month}月${date.day}日 ($dayChar)';
       } else {
-        // English format with day name: Sat, Feb 28, 2026
         formatted = DateFormat('EEE, MMM dd, yyyy').format(date);
       }
 
@@ -51,7 +54,7 @@ class Helpers {
     }
   }
 
-  /// Format date and time together: Sat Feb 28, 2026 ・18:00-21:00
+  /// Format date and time together: Sat Feb 28, 2026  6:00 PM-9:00 PM
   static String formatDateTimeRange(
     String dateString,
     String startTime,
@@ -65,48 +68,24 @@ class Helpers {
 
     try {
       final date = DateTime.parse(dateString);
+      final start12 = formatTo12Hour(startTime);
+      final end12 = formatTo12Hour(endTime);
       String formatted;
 
       if (isJapanese) {
         const japaneseWeekdays = ['日', '月', '火', '水', '木', '金', '土'];
         final dayChar = japaneseWeekdays[date.weekday % 7];
         formatted =
-            '${date.year}年${date.month}月${date.day}日 ($dayChar) ・$startTime-$endTime';
+            '${date.year}年${date.month}月${date.day}日 ($dayChar)  $start12-$end12';
       } else {
-        // Format: Sat Feb 28, 2026 ・18:00-21:00
         final formattedDate = DateFormat('EEE MMM dd, yyyy').format(date);
-        formatted = '$formattedDate ・$startTime-$endTime';
+        formatted = '$formattedDate  $start12-$end12';
       }
 
       _dateTimeRangeCache[cacheKey] = formatted;
       return formatted;
     } catch (e) {
-      return '$dateString ・$startTime-$endTime';
+      return '$dateString  $startTime-$endTime';
     }
-  }
-
-  static String formatTime(String timeString) {
-    try {
-      final parts = timeString.split(':');
-      final hour = int.parse(parts[0]);
-      final minute = parts[1];
-      final period = hour >= 12 ? 'PM' : 'AM';
-      final displayHour = hour > 12 ? hour - 12 : (hour == 0 ? 12 : hour);
-      return '$displayHour:$minute $period';
-    } catch (e) {
-      return timeString;
-    }
-  }
-
-  static String formatPrice(int price, String currency) {
-    if (price == 0) return 'Free';
-    return '$currency$price';
-  }
-
-  // Clear cache if needed (e.g., on language change)
-  static void clearCache() {
-    _dateCache.clear();
-    _dateWithDayCache.clear();
-    _dateTimeRangeCache.clear();
   }
 }
