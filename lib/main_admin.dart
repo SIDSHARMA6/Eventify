@@ -12,24 +12,12 @@ import 'providers/theme_provider.dart';
 import 'providers/auth_provider.dart';
 import 'screens/admin/admin_home_wrapper.dart';
 
-/// Admin App Entry Point
-/// Build command: flutter build apk --target lib/main_admin.dart --release
-/// Run command:   flutter run --target lib/main_admin.dart
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Initialize Firebase
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-
-  // Initialize Firebase services
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await FirebaseService().initialize();
   await NotificationService().initialize();
-
-  // Initialize Cloudinary (free image hosting)
   CloudinaryService().initialize();
-
   runApp(const AdminApp());
 }
 
@@ -53,13 +41,8 @@ class AdminApp extends StatelessWidget {
             darkTheme: AppTheme.darkTheme,
             themeMode:
                 themeProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
-            // Admin app starts directly at home with bottom nav
             home: const AdminHomeWrapper(),
             routes: AdminRoutes.getRoutes(),
-            onGenerateRoute: (settings) {
-              // Handle dynamic routes if needed
-              return null;
-            },
           );
         },
       ),

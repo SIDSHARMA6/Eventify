@@ -4,28 +4,20 @@ import '../config/constants.dart';
 
 class LanguageProvider extends ChangeNotifier {
   String _currentLanguage = AppConstants.defaultLanguage;
-
   String get currentLanguage => _currentLanguage;
 
-  LanguageProvider() {
-    _loadLanguage();
-  }
+  LanguageProvider() { _load(); }
 
-  Future<void> _loadLanguage() async {
+  Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
-    _currentLanguage = prefs.getString(AppConstants.keyLanguage) ??
-        AppConstants.defaultLanguage;
+    _currentLanguage = prefs.getString(AppConstants.keyLanguage) ?? AppConstants.defaultLanguage;
     notifyListeners();
   }
 
-  Future<void> switchLanguage(String language) async {
-    _currentLanguage = language;
+  Future<void> switchLanguage(String lang) async {
+    _currentLanguage = lang;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(AppConstants.keyLanguage, language);
+    await prefs.setString(AppConstants.keyLanguage, lang);
     notifyListeners();
-  }
-
-  String getText(String en, String ja) {
-    return _currentLanguage == 'en' ? en : ja;
   }
 }

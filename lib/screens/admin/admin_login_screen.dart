@@ -49,6 +49,7 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
       // Check if user is admin
       if (!authProvider.isAdmin) {
         await authProvider.logout();
+        if (!mounted) return;
         setState(() => _isLoading = false);
         scaffoldMessenger.showSnackBar(
           SnackBar(

@@ -23,6 +23,7 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   bool get wantKeepAlive => true;
 
+
   List<Map<String, dynamic>> _filterAndSort(List<Map<String, dynamic>> events) {
     final now = DateTime.now();
     final currentMonth = DateTime(now.year, now.month, 1);
@@ -31,7 +32,6 @@ class _HomeScreenState extends State<HomeScreen>
     // Filter: visible, non-deleted, within this + next month
     final visible = events.where((event) {
       if (event['isHidden'] == true) return false;
-      if (event['isDeleted'] == true) return false;
       try {
         final d = DateTime.parse(event['date']);
         return !d.isBefore(currentMonth) && d.isBefore(twoMonthsLater);

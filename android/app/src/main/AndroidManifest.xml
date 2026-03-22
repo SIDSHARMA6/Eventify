@@ -5,11 +5,18 @@
 <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 <uses-permission android:name="android.permission.VIBRATE" />
 <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+<!-- mobile_scanner: camera for QR scanning -->
+<uses-permission android:name="android.permission.CAMERA"/>
+<!-- flutter_local_notifications: exact alarms on Android 12+ -->
+<uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
+<uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
 
     <application
         android:label="Best Evento"
         android:name="${applicationName}"
-        android:icon="@mipmap/launcher_icon">
+        android:icon="@mipmap/launcher_icon"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:enableOnBackInvokedCallback="true">
         
         <!-- FCM Notification metadata -->
         <meta-data
@@ -75,10 +82,10 @@
             <action android:name="android.intent.action.VIEW"/>
             <data android:scheme="https"/>
         </intent>
-        <!-- Required for url_launcher: open http links -->
+        <!-- Required for add_2_calendar: insert events into calendar -->
         <intent>
-            <action android:name="android.intent.action.VIEW"/>
-            <data android:scheme="http"/>
+            <action android:name="android.intent.action.INSERT"/>
+            <data android:mimeType="vnd.android.cursor.dir/event"/>
         </intent>
     </queries>
 </manifest>

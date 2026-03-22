@@ -1,6 +1,7 @@
 import 'package:eventify/providers/auth_provider.dart';
 import 'package:eventify/screens/user/cancellation_policy_screen.dart';
 import 'package:eventify/screens/user/commercial_disclosure_screen.dart';
+import 'package:eventify/screens/user/faq_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -292,6 +293,23 @@ class ProfileScreenAdmin extends StatelessWidget {
             trailing: const Icon(Icons.arrow_forward_ios, size: 16),
             onTap: () {
               AppRoutes.navigateTo(context, AppRoutes.privacyPolicy);
+            },
+          ),
+
+          // FAQ
+          ListTile(
+            leading: const GradientIcon(icon: Icons.help_outline),
+            title: Text(
+              Provider.of<LanguageProvider>(context, listen: false)
+                          .currentLanguage ==
+                      'en'
+                  ? 'FAQ'
+                  : 'よくある質問',
+            ),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () {
+              Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const FaqScreen()));
             },
           ),
 

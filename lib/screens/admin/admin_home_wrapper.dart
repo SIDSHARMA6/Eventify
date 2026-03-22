@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../utils/app_text.dart';
 import '../user/home_screen.dart';
 import '../user/my_tickets_screen.dart';
@@ -27,7 +28,7 @@ class _AdminHomeWrapperState extends State<AdminHomeWrapper> {
   Widget build(BuildContext context) {
     return PopScope(
       canPop: false,
-      onPopInvokedWithResult: (didPop, result) {
+      onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
 
         // If not on home tab, go back to home
@@ -35,7 +36,7 @@ class _AdminHomeWrapperState extends State<AdminHomeWrapper> {
           setState(() => _currentIndex = 0);
         } else {
           // Show exit confirmation
-          showDialog<bool>(
+          final shouldExit = await showDialog<bool>(
             context: context,
             builder: (context) => AlertDialog(
               title: const Text('Exit App'),
@@ -52,6 +53,7 @@ class _AdminHomeWrapperState extends State<AdminHomeWrapper> {
               ],
             ),
           );
+          if (shouldExit == true) SystemNavigator.pop();
         }
       },
       child: Scaffold(

@@ -1,3 +1,7 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../providers/language_provider.dart';
+
 /// Helper functions for handling bilingual content with fallback
 class LanguageHelper {
   /// Get text with fallback to English if Japanese is empty/null
@@ -53,5 +57,9 @@ class LanguageHelper {
       return List<String>.from(enImages);
     }
     return [];
+  }
+
+  static bool isJapanese(BuildContext context) {
+    return Provider.of<LanguageProvider>(context, listen: false).currentLanguage == 'ja';
   }
 }

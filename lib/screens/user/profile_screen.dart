@@ -10,6 +10,7 @@ import '../../widgets/gradient_app_bar.dart';
 import '../../widgets/gradient_icon.dart';
 import 'commercial_disclosure_screen.dart';
 import 'cancellation_policy_screen.dart';
+import 'faq_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -146,6 +147,23 @@ class ProfileScreen extends StatelessWidget {
             trailing: const Icon(Icons.arrow_forward_ios, size: 16),
             onTap: () {
               AppRoutes.navigateTo(context, AppRoutes.privacyPolicy);
+            },
+          ),
+
+          // FAQ
+          ListTile(
+            leading: const GradientIcon(icon: Icons.help_outline),
+            title: Text(
+              Provider.of<LanguageProvider>(context, listen: false)
+                          .currentLanguage ==
+                      'en'
+                  ? 'FAQ'
+                  : 'よくある質問',
+            ),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () {
+              Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const FaqScreen()));
             },
           ),
 

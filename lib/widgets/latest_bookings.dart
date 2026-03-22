@@ -5,106 +5,102 @@ import '../services/ticket_service.dart';
 import '../providers/language_provider.dart';
 import '../utils/app_text.dart';
 
-class LatestBookings extends StatelessWidget {
+class LatestBookings extends StatefulWidget {
   const LatestBookings({super.key});
 
   @override
+  State<LatestBookings> createState() => _LatestBookingsState();
+}
+
+class _LatestBookingsState extends State<LatestBookings> {
+  late Stream<List<Map<String, dynamic>>> _stream;
+
+  @override
+  void initState() {
+    super.initState();
+    _stream = TicketService().getLatestBookings(limit: 3);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    context.watch<LanguageProvider>(); // rebuild on language change
+    context.watch<LanguageProvider>();
+    final isJa =
+        Provider.of<LanguageProvider>(context, listen: false).currentLanguage ==
+            'ja';
 
     return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: TicketService().getLatestBookings(limit: 3),
+      stream: _stream,
       builder: (context, snapshot) {
-        final latestBookings = snapshot.data ?? [];
-
-        if (latestBookings.isEmpty) return const SizedBox.shrink();
+        final bookings = snapshot.data ?? [];
+        if (bookings.isEmpty) return const SizedBox.shrink();
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text(
-                AppText.latestBookings(context),
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-              ),
+              child: Text(AppText.latestBookings(context),
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleLarge
+                      ?.copyWith(fontWeight: FontWeight.bold)),
             ),
             const SizedBox(height: 12),
-            ...latestBookings.map((booking) {
-              final timestamp = (() {
-                try {
-                  return DateTime.parse(booking['timestamp']);
-                } catch (_) {
-                  return DateTime.now();
-                }
-              })();
-
-              final dateFormat = DateFormat('d MMM yyyy');
-              final timeFormat = DateFormat('h:mm a');
-              final dateStr = dateFormat.format(timestamp);
-              final timeStr = timeFormat.format(timestamp);
-
-              // Show NEW badge for bookings within last 5 minutes
-              final isNew = DateTime.now().difference(timestamp).inMinutes < 5;
+            ...bookings.map((booking) {
+              final ts = DateTime.tryParse(booking['timestamp'] ?? '') ??
+                  DateTime.now();
+              final isNew = DateTime.now().difference(ts).inMinutes < 15;
+              final title = isJa
+                  ? (booking['eventTitle_ja'] ?? booking['eventTitle_en'] ?? '')
+                  : (booking['eventTitle_en'] ?? '');
 
               return Container(
                 margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).cardColor,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Theme.of(context).dividerColor),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.confirmation_number,
-                      color: Theme.of(context).primaryColor,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
+                    color: Theme.of(context).cardColor,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                        color: Theme.of(context)
+                            .dividerColor
+                            .withValues(alpha: 0.1))),
+                child: Row(children: [
+                  Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                          color: Theme.of(context)
+                              .primaryColor
+                              .withValues(alpha: 0.1),
+                          shape: BoxShape.circle),
+                      child: Icon(Icons.confirmation_number_outlined,
+                          color: Theme.of(context).primaryColor, size: 18)),
+                  const SizedBox(width: 12),
+                  Expanded(
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            booking['eventTitle_en'] ?? '',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodyMedium
-                                ?.copyWith(fontWeight: FontWeight.w500),
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                        Text(title,
+                            style: const TextStyle(fontWeight: FontWeight.bold),
                             maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            '$dateStr at $timeStr',
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (isNew)
-                      Container(
+                            overflow: TextOverflow.ellipsis),
+                        Text(
+                            DateFormat(isJa ? 'M月d日 H:mm' : 'MMM d, h:mm a')
+                                .format(ts),
+                            style: Theme.of(context).textTheme.bodySmall),
+                      ])),
+                  if (isNew)
+                    Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 4),
+                            horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.secondary,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          'NEW',
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.onSecondary,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
+                            color: const Color(0xFFFE008B),
+                            borderRadius: BorderRadius.circular(8)),
+                        child: const Text('NEW',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold))),
+                ]),
               );
             }),
             const SizedBox(height: 8),

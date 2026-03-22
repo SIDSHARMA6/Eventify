@@ -5,7 +5,7 @@ import '../config/constants.dart';
 import '../services/location_management_service.dart';
 import 'gradient_app_bar.dart';
 
-class TopBar extends StatelessWidget implements PreferredSizeWidget {
+class TopBar extends StatefulWidget implements PreferredSizeWidget {
   final String? selectedLocation;
   final Function(String)? onLocationChanged;
 
@@ -19,6 +19,21 @@ class TopBar extends StatelessWidget implements PreferredSizeWidget {
   Size get preferredSize => const Size.fromHeight(60);
 
   @override
+  State<TopBar> createState() => _TopBarState();
+}
+
+class _TopBarState extends State<TopBar> {
+  Stream<List<Map<String, dynamic>>>? _locationsStream;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.selectedLocation != null && widget.onLocationChanged != null) {
+      _locationsStream = LocationManagementService().getAllLocations();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return GradientAppBar(
       title: Text(
@@ -29,50 +44,40 @@ class TopBar extends StatelessWidget implements PreferredSizeWidget {
             ?.copyWith(color: Colors.white),
       ),
       actions: [
-        // 📍 Location dropdown — streams from Firestore
-        if (selectedLocation != null && onLocationChanged != null)
+        if (widget.selectedLocation != null && widget.onLocationChanged != null)
           Consumer<LanguageProvider>(
             builder: (context, langProvider, _) {
               final isJapanese = langProvider.currentLanguage == 'ja';
               return StreamBuilder<List<Map<String, dynamic>>>(
-                stream: LocationManagementService().getAllLocations(),
+                stream: _locationsStream,
                 builder: (context, snapshot) {
                   final locations = snapshot.data ?? [];
                   return PopupMenuButton<String>(
                     icon: const Icon(Icons.location_on, color: Colors.white),
-                    onSelected: onLocationChanged!,
-                    itemBuilder: (context) {
-                      return locations.map((location) {
-                        final nameEn = location['name_en'] as String? ?? '';
-                        final nameJa = location['name_ja'] as String? ?? nameEn;
-                        final displayName = isJapanese ? nameJa : nameEn;
-                        return PopupMenuItem<String>(
-                          value: nameEn, // always English key for filtering
-                          child: Text(displayName),
-                        );
-                      }).toList();
-                    },
+                    onSelected: widget.onLocationChanged!,
+                    itemBuilder: (context) => locations.map((loc) {
+                      final nameEn = loc['name_en'] as String? ?? '';
+                      final nameJa = loc['name_ja'] as String? ?? nameEn;
+                      return PopupMenuItem<String>(
+                        value: nameEn,
+                        child: Text(isJapanese ? nameJa : nameEn),
+                      );
+                    }).toList(),
                   );
                 },
               );
             },
           ),
-
-        // 🌐 Language switcher
         Consumer<LanguageProvider>(
-          builder: (context, langProvider, child) => PopupMenuButton<String>(
+          builder: (context, langProvider, _) => PopupMenuButton<String>(
             icon: const Icon(Icons.language, color: Colors.white),
-            onSelected: (value) => langProvider.switchLanguage(value),
-            itemBuilder: (context) {
-              return const [
-                PopupMenuItem<String>(value: 'en', child: Text('English')),
-                PopupMenuItem<String>(value: 'ja', child: Text('日本語')),
-              ];
-            },
+            onSelected: langProvider.switchLanguage,
+            itemBuilder: (_) => const [
+              PopupMenuItem<String>(value: 'en', child: Text('English')),
+              PopupMenuItem<String>(value: 'ja', child: Text('日本語')),
+            ],
           ),
         ),
-
-        // 🔔 Notification icon
         IconButton(
           icon: const Icon(Icons.notifications_outlined, color: Colors.white),
           onPressed: () {},

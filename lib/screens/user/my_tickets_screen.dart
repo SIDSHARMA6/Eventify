@@ -5,110 +5,114 @@ import '../../utils/app_text.dart';
 import '../../services/ticket_service.dart';
 import '../../providers/language_provider.dart';
 import '../../widgets/gradient_app_bar.dart';
+import '../../widgets/loading_overlay.dart';
 
-class MyTicketsScreen extends StatelessWidget {
+class MyTicketsScreen extends StatefulWidget {
   const MyTicketsScreen({super.key});
+
+  @override
+  State<MyTicketsScreen> createState() => _MyTicketsScreenState();
+}
+
+class _MyTicketsScreenState extends State<MyTicketsScreen> {
+  late Stream<List<Map<String, dynamic>>> _stream;
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _stream = TicketService().getMyReservations();
+  }
 
   @override
   Widget build(BuildContext context) {
     context.watch<LanguageProvider>();
 
-    return Scaffold(
-      appBar: GradientAppBar(
-        title: const Text(
-          'My Tickets (Best Evento 🎉)',
-          style: TextStyle(color: Colors.white),
+    return LoadingOverlay(
+      isLoading: _isLoading,
+      message: 'Cancelling...',
+      child: Scaffold(
+        appBar: GradientAppBar(
+          title: const Text(
+            'My Tickets - Best Evento 🎉',
+            style: TextStyle(color: Colors.white),
+          ),
         ),
-      ),
-      body: StreamBuilder<List<Map<String, dynamic>>>(
-        stream: TicketService().getMyReservations(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting &&
-              !snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          if (snapshot.hasError) {
-            return Center(child: Text('Error: ${snapshot.error}'));
-          }
-
-          // Filter out deleted tickets and past events
-          final now = DateTime.now();
-          final today = DateTime(now.year, now.month, now.day);
-
-          final tickets = (snapshot.data ?? []).where((ticket) {
-            if (ticket['isDeleted'] == true) return false;
-            // Exclude tickets for events that already ended
-            try {
-              final eventDate = DateTime.parse(ticket['eventDate'] ?? '');
-              return !eventDate.isBefore(today);
-            } catch (_) {
-              return true; // keep if can't parse
+        body: StreamBuilder<List<Map<String, dynamic>>>(
+          stream: _stream,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting &&
+                !snapshot.hasData) {
+              return const Center(child: CircularProgressIndicator());
             }
-          }).toList();
+            if (snapshot.hasError) {
+              return Center(child: Text('Error: ${snapshot.error}'));
+            }
+            final tickets = snapshot.data ?? [];
+            if (tickets.isEmpty) return _buildEmptyState(context);
 
-          if (tickets.isEmpty) {
-            return _buildEmptyState(context);
-          }
-
-          return ListView.builder(
-            physics: const BouncingScrollPhysics(),
-            itemCount: tickets.length,
-            itemBuilder: (context, index) {
-              return TicketCard(
+            return ListView.builder(
+              physics: const BouncingScrollPhysics(),
+              itemCount: tickets.length,
+              itemBuilder: (context, index) => TicketCard(
                 ticket: tickets[index],
-                onCancel: () => _cancelTicket(context, tickets[index]),
-              );
-            },
-          );
-        },
+                onCancel: () => _cancelTicket(tickets[index]),
+              ),
+            );
+          },
+        ),
       ),
     );
   }
 
-  Future<void> _cancelTicket(
-      BuildContext context, Map<String, dynamic> ticket) async {
+  Future<void> _cancelTicket(Map<String, dynamic> ticket) async {
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(AppText.cancelTicket(context)),
-        content: Text(AppText.cancelConfirm(context)),
+      builder: (ctx) => AlertDialog(
+        title: Text(AppText.cancelTicket(ctx)),
+        content: Text(AppText.cancelConfirm(ctx)),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(AppText.no(context)),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(AppText.no(ctx)),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(ctx, true),
             style: TextButton.styleFrom(
-                foregroundColor: Theme.of(context).colorScheme.error),
-            child: Text(AppText.yes(context)),
+                foregroundColor: Theme.of(ctx).colorScheme.error),
+            child: Text(AppText.yes(ctx)),
           ),
         ],
       ),
     );
 
-    if (confirm == true && context.mounted) {
+    if (confirm == true && mounted) {
+      setState(() => _isLoading = true);
+      final messenger = ScaffoldMessenger.of(context);
+      final successMsg = AppText.success(context);
+      final errorColor = Theme.of(context).colorScheme.error;
       try {
         await TicketService().cancelReservation(
           ticket['id'],
           ticket['eventId'],
           ticket['gender'],
         );
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(AppText.success(context))),
+        if (mounted) {
+          messenger.showSnackBar(
+            SnackBar(content: Text(successMsg)),
           );
         }
       } catch (e) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
+        if (mounted) {
+          messenger.showSnackBar(
             SnackBar(
               content: Text('Error: $e'),
-              backgroundColor: Theme.of(context).colorScheme.error,
+              backgroundColor: errorColor,
             ),
           );
         }
+      } finally {
+        if (mounted) setState(() => _isLoading = false);
       }
     }
   }
@@ -118,23 +122,16 @@ class MyTicketsScreen extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.confirmation_number_outlined,
-            size: 100,
-            color: Theme.of(context).textTheme.bodySmall?.color,
-          ),
+          Icon(Icons.confirmation_number_outlined,
+              size: 100, color: Theme.of(context).textTheme.bodySmall?.color),
           const SizedBox(height: 16),
-          Text(
-            AppText.noTicketsYet(context),
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
+          Text(AppText.noTicketsYet(context),
+              style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 8),
-          Text(
-            AppText.browseEvents(context),
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).textTheme.bodySmall?.color,
-                ),
-          ),
+          Text(AppText.browseEvents(context),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).textTheme.bodySmall?.color,
+                  )),
         ],
       ),
     );

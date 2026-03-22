@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../widgets/gradient_app_bar.dart';
-import '../../services/firebase_service.dart';
+import '../../services/event_service.dart';
 import 'manage_events_screen.dart';
 
 /// Admin screen showing a table of all creators and their event/ticket stats.
@@ -18,8 +17,8 @@ class CreatorSummaryScreen extends StatelessWidget {
           style: TextStyle(color: Colors.white),
         ),
       ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseService().eventsCollection.snapshots(),
+      body: StreamBuilder<List<Map<String, dynamic>>>(
+        stream: EventService().getAllEvents(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -28,13 +27,12 @@ class CreatorSummaryScreen extends StatelessWidget {
             return Center(child: Text('Error: ${snapshot.error}'));
           }
 
-          final docs = snapshot.data?.docs ?? [];
+          final docs = snapshot.data ?? [];
 
           // Build creator summary map: email → stats
           final Map<String, _CreatorStats> creatorMap = {};
 
-          for (final doc in docs) {
-            final data = doc.data() as Map<String, dynamic>;
+          for (final data in docs) {
             final email =
                 (data['createdByEmail'] as String?)?.isNotEmpty == true
                     ? data['createdByEmail'] as String

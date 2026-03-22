@@ -18,13 +18,20 @@ class LocationManagementService {
   }
 
   Future<String> createLocation(Map<String, dynamic> data) async {
-    data['createdAt'] = data['updatedAt'] = FieldValue.serverTimestamp();
-    return (await _firebase.locationsCollection.add(data)).id;
+    final payload = <String, dynamic>{
+      ...data,
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+    return (await _firebase.locationsCollection.add(payload)).id;
   }
 
   Future<void> updateLocation(String id, Map<String, dynamic> updates) async {
-    updates['updatedAt'] = FieldValue.serverTimestamp();
-    await _firebase.locationsCollection.doc(id).update(updates);
+    final payload = <String, dynamic>{
+      ...updates,
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+    await _firebase.locationsCollection.doc(id).update(payload);
   }
 
   Future<void> deleteLocation(String id) async =>

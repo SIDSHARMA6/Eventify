@@ -113,7 +113,7 @@ SECURITY_*.md
 IMPLEMENTATION_*.md
 PERMISSIONS.md
 firebase.json
-
+*.png
 # Environment files
 .env
 .env.local
@@ -133,6 +133,7 @@ yarn-error.log
 # Coverage
 coverage/
 .test_coverage.dart
+.png
 
 # Exceptions to above rules
 !**/ios/**/default.mode1v3
@@ -158,3 +159,5 @@ DEPLOYMENT_GUIDE.md
 
 # Example files
 *.example
+key.properties
+name.jks

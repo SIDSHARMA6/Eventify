@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:provider/provider.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../../utils/app_text.dart';
+import '../../providers/auth_provider.dart';
+import '../../services/ticket_service.dart';
 import '../../widgets/gradient_app_bar.dart';
 import 'checkin_history_screen.dart';
 
@@ -27,8 +29,6 @@ class _QRScannerScreenState extends State<QRScannerScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-
-    // Pause camera when app is in background
     if (state == AppLifecycleState.paused) {
       cameraController.stop();
     } else if (state == AppLifecycleState.resumed) {
@@ -45,83 +45,62 @@ class _QRScannerScreenState extends State<QRScannerScreen>
 
   void _onDetect(BarcodeCapture capture) async {
     if (_isProcessing) return;
-
-    final List<Barcode> barcodes = capture.barcodes;
-    if (barcodes.isEmpty) return;
-
-    final String? code = barcodes.first.rawValue;
+    final code = capture.barcodes.firstOrNull?.rawValue;
     if (code == null) return;
 
     setState(() => _isProcessing = true);
 
-    // Pre-capture all context-dependent values BEFORE any await call
+    // Pre-capture context-dependent strings before any await
     final invalidTitle = AppText.invalidTicket(context);
     final notFoundMsg = AppText.ticketNotFound(context);
     final checkInSuccessTitle = AppText.checkInSuccessful(context);
     final alreadyCheckedInTitle = AppText.alreadyCheckedIn(context);
+    final noPermissionMsg =
+        'You must be logged in as admin to check in tickets.';
 
-    // Lookup reservation in Firestore by document ID
-    Map<String, dynamic> ticket = {};
-    try {
-      final doc = await FirebaseFirestore.instance
-          .collection('reservations')
-          .doc(code)
-          .get();
-      if (doc.exists) {
-        ticket = Map<String, dynamic>.from(doc.data()!);
-        ticket['id'] = doc.id;
-      }
-    } catch (e) {
-      debugPrint('Firestore QR lookup error: $e');
+    // Admin role check
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    if (!auth.isAdmin) {
+      _showResultDialog(invalidTitle, noPermissionMsg, false);
+      await Future.delayed(const Duration(seconds: 2));
+      if (mounted) setState(() => _isProcessing = false);
+      return;
     }
 
-    if (!mounted) return;
-
-    if (ticket.isEmpty) {
-      _showResultDialog(invalidTitle, notFoundMsg, false);
-    } else {
-      // Mark attendance in Firestore if not already checked in
-      if (ticket['checkedInAt'] == null) {
-        // Pre-capture all remaining context values before the next await
-        final ticketDetailsMsg = AppText.ticketDetails(
-          context,
-          ticket['id'],
-          ticket['userName'],
-          ticket['gender'],
-          ticket['eventTitle_en'],
-        );
-        final now = DateTime.now().toIso8601String();
+    try {
+      final ticket = await TicketService().checkIn(code);
+      if (!mounted) return;
+      final details = AppText.ticketDetails(
+        context,
+        ticket['id'],
+        ticket['userName'],
+        ticket['gender'],
+        ticket['eventTitle_en'],
+      );
+      _showResultDialog(checkInSuccessTitle, details, true);
+    } catch (e) {
+      if (!mounted) return;
+      final msg = e.toString();
+      if (msg.contains('ticket_not_found')) {
+        _showResultDialog(invalidTitle, notFoundMsg, false);
+      } else if (msg.contains('already_checked_in:')) {
+        final timeRaw = msg.split('already_checked_in:').last;
         try {
-          await FirebaseFirestore.instance
-              .collection('reservations')
-              .doc(code)
-              .update({'checkedInAt': now, 'isScanned': true});
-          ticket['checkedInAt'] = now;
-          if (!mounted) return;
-          _showResultDialog(checkInSuccessTitle, ticketDetailsMsg, true);
-        } catch (e) {
-          debugPrint('Check-in update error: $e');
-          if (!mounted) return;
+          final dt = DateTime.parse(timeRaw);
+          final timeStr = '${dt.hour}:${dt.minute.toString().padLeft(2, '0')}';
+          _showResultDialog(alreadyCheckedInTitle,
+              AppText.alreadyCheckedInAt(context, timeStr), false);
+        } catch (_) {
           _showResultDialog(
-            'Check-in Failed',
-            'Could not confirm check-in. Make sure you are logged in as admin.\nError: $e',
-            false,
-          );
+              alreadyCheckedInTitle, 'Already checked in.', false);
         }
       } else {
-        final checkedInTime = DateTime.parse(ticket['checkedInAt']);
-        final timeStr =
-            '${checkedInTime.hour}:${checkedInTime.minute.toString().padLeft(2, '0')}';
-        final alreadyAtMsg = AppText.alreadyCheckedInAt(context, timeStr);
-        _showResultDialog(alreadyCheckedInTitle, alreadyAtMsg, false);
+        _showResultDialog('Check-in Failed', msg, false);
       }
     }
 
-    // Reset processing after delay
     await Future.delayed(const Duration(seconds: 2));
-    if (mounted) {
-      setState(() => _isProcessing = false);
-    }
+    if (mounted) setState(() => _isProcessing = false);
   }
 
   void _showResultDialog(String title, String message, bool success) {
@@ -130,10 +109,8 @@ class _QRScannerScreenState extends State<QRScannerScreen>
       builder: (context) => AlertDialog(
         title: Row(
           children: [
-            Icon(
-              success ? Icons.check_circle : Icons.error,
-              color: success ? Colors.green : Colors.red,
-            ),
+            Icon(success ? Icons.check_circle : Icons.error,
+                color: success ? Colors.green : Colors.red),
             const SizedBox(width: 8),
             Text(title),
           ],
@@ -153,21 +130,15 @@ class _QRScannerScreenState extends State<QRScannerScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: GradientAppBar(
-        title: Text(
-          AppText.scanTicketQR(context),
-          style: const TextStyle(color: Colors.white),
-        ),
+        title: Text(AppText.scanTicketQR(context),
+            style: const TextStyle(color: Colors.white)),
         actions: [
           IconButton(
             icon: const Icon(Icons.history),
-            onPressed: () {
-              Navigator.push(
+            onPressed: () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => const CheckinHistoryScreen(),
-                ),
-              );
-            },
+                    builder: (_) => const CheckinHistoryScreen())),
             tooltip: 'Check-in History',
           ),
           IconButton(
@@ -184,16 +155,8 @@ class _QRScannerScreenState extends State<QRScannerScreen>
       ),
       body: Stack(
         children: [
-          MobileScanner(
-            controller: cameraController,
-            onDetect: _onDetect,
-          ),
-          // Overlay with scanning area
-          CustomPaint(
-            painter: ScannerOverlay(),
-            child: Container(),
-          ),
-          // Instructions
+          MobileScanner(controller: cameraController, onDetect: _onDetect),
+          CustomPaint(painter: ScannerOverlay(), child: Container()),
           Positioned(
             bottom: 100,
             left: 0,
@@ -208,10 +171,7 @@ class _QRScannerScreenState extends State<QRScannerScreen>
               child: Text(
                 AppText.scanInstruction(context),
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                ),
+                style: const TextStyle(color: Colors.white, fontSize: 14),
               ),
             ),
           ),
@@ -234,7 +194,6 @@ class ScannerOverlay extends CustomPainter {
       height: 250,
     );
 
-    // Draw overlay with transparent center
     canvas.drawPath(
       Path()
         ..addRect(Rect.fromLTWH(0, 0, size.width, size.height))
@@ -243,61 +202,25 @@ class ScannerOverlay extends CustomPainter {
       paint,
     );
 
-    // Draw corner borders
     final borderPaint = Paint()
       ..color = Colors.white
       ..style = PaintingStyle.stroke
       ..strokeWidth = 4;
 
-    const cornerLength = 30.0;
+    const c = 30.0;
+    final l = scanArea.left;
+    final r = scanArea.right;
+    final t = scanArea.top;
+    final b = scanArea.bottom;
 
-    // Top-left
-    canvas.drawLine(
-      Offset(scanArea.left, scanArea.top),
-      Offset(scanArea.left + cornerLength, scanArea.top),
-      borderPaint,
-    );
-    canvas.drawLine(
-      Offset(scanArea.left, scanArea.top),
-      Offset(scanArea.left, scanArea.top + cornerLength),
-      borderPaint,
-    );
-
-    // Top-right
-    canvas.drawLine(
-      Offset(scanArea.right, scanArea.top),
-      Offset(scanArea.right - cornerLength, scanArea.top),
-      borderPaint,
-    );
-    canvas.drawLine(
-      Offset(scanArea.right, scanArea.top),
-      Offset(scanArea.right, scanArea.top + cornerLength),
-      borderPaint,
-    );
-
-    // Bottom-left
-    canvas.drawLine(
-      Offset(scanArea.left, scanArea.bottom),
-      Offset(scanArea.left + cornerLength, scanArea.bottom),
-      borderPaint,
-    );
-    canvas.drawLine(
-      Offset(scanArea.left, scanArea.bottom),
-      Offset(scanArea.left, scanArea.bottom - cornerLength),
-      borderPaint,
-    );
-
-    // Bottom-right
-    canvas.drawLine(
-      Offset(scanArea.right, scanArea.bottom),
-      Offset(scanArea.right - cornerLength, scanArea.bottom),
-      borderPaint,
-    );
-    canvas.drawLine(
-      Offset(scanArea.right, scanArea.bottom),
-      Offset(scanArea.right, scanArea.bottom - cornerLength),
-      borderPaint,
-    );
+    canvas.drawLine(Offset(l, t), Offset(l + c, t), borderPaint);
+    canvas.drawLine(Offset(l, t), Offset(l, t + c), borderPaint);
+    canvas.drawLine(Offset(r, t), Offset(r - c, t), borderPaint);
+    canvas.drawLine(Offset(r, t), Offset(r, t + c), borderPaint);
+    canvas.drawLine(Offset(l, b), Offset(l + c, b), borderPaint);
+    canvas.drawLine(Offset(l, b), Offset(l, b - c), borderPaint);
+    canvas.drawLine(Offset(r, b), Offset(r - c, b), borderPaint);
+    canvas.drawLine(Offset(r, b), Offset(r, b - c), borderPaint);
   }
 
   @override

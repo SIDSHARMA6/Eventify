@@ -4,6 +4,10 @@ import 'firebase_service.dart';
 import 'notification_service.dart';
 
 class EventService {
+  static final EventService _instance = EventService._internal();
+  factory EventService() => _instance;
+  EventService._internal();
+
   final _firebase = FirebaseService();
   final _notification = NotificationService();
 
@@ -45,40 +49,44 @@ class EventService {
         : null;
   }
 
+  Stream<Map<String, dynamic>?> watchEvent(String id) =>
+      _firebase.eventsCollection.doc(id).snapshots().map((doc) => doc.exists
+          ? {...doc.data() as Map<String, dynamic>, 'id': doc.id}
+          : null);
+
   Future<String> createEvent(Map<String, dynamic> data) async {
     final user = FirebaseAuth.instance.currentUser!;
-    data.addAll({
+    final payload = <String, dynamic>{
+      ...data,
       'createdBy': user.uid,
       'createdByEmail': user.email ?? '',
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
-      'maleBooked': 0,
-      'femaleBooked': 0,
-      'isHidden': false,
-    });
-    final doc = await _firebase.eventsCollection.add(data);
+      'maleBooked': data['maleBooked'] ?? 0,
+      'femaleBooked': data['femaleBooked'] ?? 0,
+      'isHidden': data['isHidden'] ?? false,
+    };
+    final doc = await _firebase.eventsCollection.add(payload);
     await _notification.sendNewEventNotification(
         data['title_en'], data['description_en']);
     return doc.id;
   }
 
   Future<void> updateEvent(String id, Map<String, dynamic> updates) async {
-    updates['updatedAt'] = FieldValue.serverTimestamp();
-    await _firebase.eventsCollection.doc(id).update(updates);
+    final payload = <String, dynamic>{
+      ...updates,
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+    await _firebase.eventsCollection.doc(id).update(payload);
   }
 
   Future<void> deleteEvent(String id) async {
-    // First delete all reservations/tickets for this event (including scanned ones)
-    final reservationsSnap = await FirebaseFirestore.instance
-        .collection('reservations')
+    final reservationsSnap = await _firebase.reservationsCollection
         .where('eventId', isEqualTo: id)
         .get();
-
     for (final doc in reservationsSnap.docs) {
       await doc.reference.delete();
     }
-
-    // Then delete the event itself
     await _firebase.eventsCollection.doc(id).delete();
   }
 

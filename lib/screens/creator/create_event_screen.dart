@@ -352,7 +352,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         final endTimeStr =
             '${_selectedEndTime.hour.toString().padLeft(2, '0')}:${_selectedEndTime.minute.toString().padLeft(2, '0')}';
 
-        await EventService().updateEvent(eventId, {
+        await EventService().updateEvent(eventId, <String, dynamic>{
           'title_en': _titleEnController.text,
           'title_ja': _titleJaController.text,
           'description_en': _descEnController.text,
@@ -381,7 +381,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         final endTimeStr =
             '${_selectedEndTime.hour.toString().padLeft(2, '0')}:${_selectedEndTime.minute.toString().padLeft(2, '0')}';
 
-        final baseEvent = {
+        final baseEvent = <String, dynamic>{
           'title_en': _titleEnController.text,
           'title_ja': _titleJaController.text,
           'description_en': _descEnController.text,

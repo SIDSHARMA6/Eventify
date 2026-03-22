@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../providers/language_provider.dart';
 import '../../utils/app_text.dart';
 import '../../services/user_management_service.dart';
@@ -62,10 +61,7 @@ class _ManageCreatorsScreenState extends State<ManageCreatorsScreen>
       }
 
       // 2. Delete creator user document
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(creator['id'])
-          .delete();
+      await UserManagementService().deleteCreator(creator['id']);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

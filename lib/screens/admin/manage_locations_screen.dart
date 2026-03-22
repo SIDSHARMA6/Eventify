@@ -4,6 +4,7 @@ import '../../utils/app_text.dart';
 import '../../providers/language_provider.dart';
 import '../../services/location_management_service.dart';
 import '../../widgets/gradient_app_bar.dart';
+import '../../widgets/loading_overlay.dart';
 
 class ManageLocationsScreen extends StatefulWidget {
   const ManageLocationsScreen({super.key});
@@ -18,6 +19,7 @@ class _ManageLocationsScreenState extends State<ManageLocationsScreen>
   bool get wantKeepAlive => true;
 
   final _locationService = LocationManagementService();
+  bool _isLoading = false;
 
   void _showLocationDialog({Map<String, dynamic>? location}) async {
     final isEditing = location != null;
@@ -66,7 +68,10 @@ class _ManageLocationsScreenState extends State<ManageLocationsScreen>
                 );
                 return;
               }
-
+              final messenger = ScaffoldMessenger.of(context);
+              final successMsg = AppText.success(context);
+              Navigator.pop(context); // close dialog first
+              setState(() => _isLoading = true);
               try {
                 if (isEditing) {
                   await _locationService.updateLocation(location['id'], {
@@ -80,18 +85,16 @@ class _ManageLocationsScreenState extends State<ManageLocationsScreen>
                     'order': 999,
                   });
                 }
-                if (context.mounted) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(AppText.success(context))),
-                  );
+                if (mounted) {
+                  messenger.showSnackBar(
+                      SnackBar(content: Text(successMsg)));
                 }
               } catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error: $e')),
-                  );
+                if (mounted) {
+                  messenger.showSnackBar(SnackBar(content: Text('Error: $e')));
                 }
+              } finally {
+                if (mounted) setState(() => _isLoading = false);
               }
             },
             child: Text(AppText.save(context)),
@@ -126,19 +129,20 @@ class _ManageLocationsScreenState extends State<ManageLocationsScreen>
     );
 
     if (confirm == true) {
+      setState(() => _isLoading = true);
       try {
         await _locationService.deleteLocation(location['id']);
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(AppText.success(context))),
-          );
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(AppText.success(context))));
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error: $e')),
-          );
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text('Error: $e')));
         }
+      } finally {
+        if (mounted) setState(() => _isLoading = false);
       }
     }
   }
@@ -148,113 +152,111 @@ class _ManageLocationsScreenState extends State<ManageLocationsScreen>
     super.build(context);
     context.watch<LanguageProvider>();
 
-    return Scaffold(
-      appBar: GradientAppBar(
-        title: Text(
-          AppText.manageLocations(context),
-          style: const TextStyle(color: Colors.white),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: () => _showLocationDialog(),
-          ),
-        ],
-      ),
-      body: StreamBuilder<List<Map<String, dynamic>>>(
-        stream: _locationService.getAllLocations(),
-        builder: (context, snapshot) {
-          final locations = snapshot.data ?? [];
-
-          if (snapshot.connectionState == ConnectionState.waiting &&
-              locations.isEmpty) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          if (locations.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.location_off,
-                    size: 64,
-                    color: Theme.of(context).colorScheme.outline,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    AppText.noLocationsYet(context),
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: 8),
-                  ElevatedButton.icon(
-                    onPressed: () => _showLocationDialog(),
-                    icon: const Icon(Icons.add),
-                    label: Text(AppText.addLocation(context)),
-                  ),
-                ],
+    return LoadingOverlay(
+        isLoading: _isLoading,
+        child: Scaffold(
+          appBar: GradientAppBar(
+            title: Text(
+              AppText.manageLocations(context),
+              style: const TextStyle(color: Colors.white),
+            ),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.add),
+                onPressed: () => _showLocationDialog(),
               ),
-            );
-          }
+            ],
+          ),
+          body: StreamBuilder<List<Map<String, dynamic>>>(
+            stream: _locationService.getAllLocations(),
+            builder: (context, snapshot) {
+              final locations = snapshot.data ?? [];
 
-          return ReorderableListView.builder(
-            physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.all(16),
-            itemCount: locations.length,
-            onReorder: (oldIndex, newIndex) async {
-              if (newIndex > oldIndex) newIndex -= 1;
-              final reordered = List<Map<String, dynamic>>.from(locations);
-              final item = reordered.removeAt(oldIndex);
-              reordered.insert(newIndex, item);
-              // Update order field in Firestore
-              for (int i = 0; i < reordered.length; i++) {
-                await _locationService
-                    .updateLocation(reordered[i]['id'], {'order': i});
+              if (snapshot.connectionState == ConnectionState.waiting &&
+                  locations.isEmpty) {
+                return const Center(child: CircularProgressIndicator());
               }
-            },
-            itemBuilder: (context, index) {
-              final location = locations[index];
-              return Card(
-                key: ValueKey(location['id'] ?? location['name_en']),
-                margin: const EdgeInsets.only(bottom: 12),
-                child: ListTile(
-                  leading: const Icon(Icons.location_on),
-                  title: Text(
-                    location['name_en'] ?? 'No name',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle: Text(
-                    location['name_ja'] ?? '',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
+
+              if (locations.isEmpty) {
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      IconButton(
-                        icon: const Icon(Icons.edit, size: 20),
-                        onPressed: () =>
-                            _showLocationDialog(location: location),
+                      Icon(
+                        Icons.location_off,
+                        size: 64,
+                        color: Theme.of(context).colorScheme.outline,
                       ),
-                      IconButton(
-                        icon: Icon(Icons.delete,
-                            size: 20,
-                            color: Theme.of(context).colorScheme.error),
-                        onPressed: () => _deleteLocation(location),
+                      const SizedBox(height: 16),
+                      Text(
+                        AppText.noLocationsYet(context),
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      const SizedBox(height: 8),
+                      ElevatedButton.icon(
+                        onPressed: () => _showLocationDialog(),
+                        icon: const Icon(Icons.add),
+                        label: Text(AppText.addLocation(context)),
                       ),
                     ],
                   ),
-                ),
+                );
+              }
+
+              return ReorderableListView.builder(
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.all(16),
+                itemCount: locations.length,
+                onReorder: (oldIndex, newIndex) async {
+                  if (newIndex > oldIndex) newIndex -= 1;
+                  final reordered = List<Map<String, dynamic>>.from(locations);
+                  final item = reordered.removeAt(oldIndex);
+                  reordered.insert(newIndex, item);
+                  // Update order field in Firestore
+                  for (int i = 0; i < reordered.length; i++) {
+                    await _locationService
+                        .updateLocation(reordered[i]['id'], {'order': i});
+                  }
+                },
+                itemBuilder: (context, index) {
+                  final location = locations[index];
+                  return Card(
+                    key: ValueKey(location['id'] ?? location['name_en']),
+                    margin: const EdgeInsets.only(bottom: 12),
+                    child: ListTile(
+                      leading: const Icon(Icons.location_on),
+                      title: Text(
+                        location['name_en'] ?? 'No name',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: Text(
+                        location['name_ja'] ?? '',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit, size: 20),
+                            onPressed: () =>
+                                _showLocationDialog(location: location),
+                          ),
+                          IconButton(
+                            icon: Icon(Icons.delete,
+                                size: 20,
+                                color: Theme.of(context).colorScheme.error),
+                            onPressed: () => _deleteLocation(location),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
               );
             },
-          );
-        },
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _showLocationDialog(),
-        child: const Icon(Icons.add),
-      ),
-    );
+          ),
+        )); // LoadingOverlay
   }
 }

@@ -1,7 +1,6 @@
 import 'package:eventify/widgets/gradient_icon.dart';
 import 'package:flutter/material.dart';
 
-
 class BottomNavAdmin extends StatelessWidget {
   final int currentIndex;
   final Function(int) onTap;
@@ -34,7 +33,7 @@ class BottomNavAdmin extends StatelessWidget {
           icon: currentIndex == 2
               ? const GradientIcon(icon: Icons.person)
               : const Icon(Icons.person),
-          label: 'admin-profile',
+          label: 'Profile',
         ),
       ],
     );
