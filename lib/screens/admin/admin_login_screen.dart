@@ -5,6 +5,7 @@ import '../../utils/app_text.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/language_provider.dart';
 import '../../widgets/gradient_app_bar.dart';
+import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 
 class AdminLoginScreen extends StatefulWidget {
   const AdminLoginScreen({super.key});
@@ -69,9 +70,24 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
       navigator.pushReplacementNamed(AdminRoutes.home);
     } catch (e) {
       setState(() => _isLoading = false);
+      String msg = 'Login failed. Please try again.';
+      if (e is FirebaseAuthException) {
+        msg = e.code == 'user-not-found'
+            ? 'No user found for that email.'
+            : e.code == 'wrong-password'
+                ? 'Wrong password provided.'
+                : e.code == 'invalid-email'
+                    ? 'The email address is invalid.'
+                    : e.code == 'user-disabled'
+                        ? 'This user has been disabled.'
+                        : 'Authentication failed. Check your credentials.';
+      } else {
+        msg = e.toString().replaceAll('Exception: ', '');
+      }
+
       scaffoldMessenger.showSnackBar(
         SnackBar(
-          content: Text(e.toString().replaceAll('Exception: ', '')),
+          content: Text(msg),
           backgroundColor: theme.colorScheme.error,
         ),
       );

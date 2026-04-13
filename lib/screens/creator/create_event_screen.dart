@@ -323,6 +323,12 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       _fieldErrors['femaleLimit'] = true;
     }
 
+    final mapLink = _mapLinkController.text.trim();
+    if (mapLink.isNotEmpty && !mapLink.startsWith('https://')) {
+      errors.add('Map link must be a valid HTTPS URL starting with https://');
+      _fieldErrors['mapLink'] = true;
+    }
+
     if (errors.isNotEmpty) {
       setState(() {}); // Trigger rebuild to show red borders
 
@@ -835,9 +841,32 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               decoration: InputDecoration(
                 labelText: 'Google Maps Link',
                 hintText: 'https://maps.google.com/?q=Tokyo+Japan',
-                prefixIcon: Icon(Icons.map),
+                prefixIcon: const Icon(Icons.map),
+                errorText: _fieldErrors['mapLink'] == true
+                    ? 'Map link must start with https://'
+                    : null,
+                border: _fieldErrors['mapLink'] == true
+                    ? OutlineInputBorder(
+                        borderSide: BorderSide(
+                            color: Theme.of(context).colorScheme.error,
+                            width: 2),
+                      )
+                    : null,
+                enabledBorder: _fieldErrors['mapLink'] == true
+                    ? OutlineInputBorder(
+                        borderSide: BorderSide(
+                            color: Theme.of(context).colorScheme.error,
+                            width: 2),
+                      )
+                    : null,
               ),
               keyboardType: TextInputType.url,
+              onChanged: (value) {
+                if (_fieldErrors['mapLink'] == true &&
+                    (value.isEmpty || value.startsWith('https://'))) {
+                  setState(() => _fieldErrors.remove('mapLink'));
+                }
+              },
             ),
 
             const SizedBox(height: 24),

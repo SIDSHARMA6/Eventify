@@ -33,3 +33,14 @@ class AppConstants {
   static const String appStoreUrl =
       'https://apps.apple.com/app/best-evento'; // Update with real numeric ID after iOS publishing
 }
+
+class AppImages {
+  
+  static const String logo = 'assets/logo.png';
+  static const String lineLogo = 'assets/line.png';
+   static const String whatsappLogo = 'assets/whatsapp-svgrepo-com.svg';
+
+static const String placeholder= 'assets/e1.jpg';
+
+
+}

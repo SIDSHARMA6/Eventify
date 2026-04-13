@@ -625,13 +625,16 @@ class AppTheme {
     ],
   );
 
+  static const Color primaryMagenta = Color(0xFFFF00FF);
+  static const Color primaryPink = Color(0xFFFE008B);
+
   /// Pink Gradient for Venue Name and Map Button (#FF00FF → #FE008B)
   static const LinearGradient pinkGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [
-      Color(0xFFFF00FF), // Magenta
-      Color(0xFFFE008B), // Deep Pink
+      primaryMagenta, // Magenta
+      primaryPink, // Deep Pink
     ],
   );
 }

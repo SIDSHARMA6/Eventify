@@ -94,9 +94,7 @@ class _AllTicketsScreenState extends State<AllTicketsScreen> {
             final scannedCount =
                 all.where((b) => b['isScanned'] == true).length;
             final activeCount = all.where((b) => b['isScanned'] != true).length;
-            // FIX-019: Read live from provider, not cached state
-            final isAdmin =
-                Provider.of<AuthProvider>(context, listen: false).isAdmin;
+            final isAdmin = context.watch<AuthProvider>().isAdmin;
 
             return Scaffold(
               appBar: GradientAppBar(

@@ -22,8 +22,7 @@ class ProfileScreenAdmin extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     context.watch<LanguageProvider>();
-    // listen:false — auth state changes are handled by Consumer widgets below
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final authProvider = context.watch<AuthProvider>();
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
@@ -308,7 +307,7 @@ class ProfileScreenAdmin extends StatelessWidget {
             ListTile(
               leading: ClipRRect(
                 borderRadius: BorderRadius.circular(4),
-                child: Image.asset('assets/line.png',
+                child: Image.asset(AppImages.lineLogo,
                     width: 30,
                     height: 30,
                     fit: BoxFit.cover,
@@ -334,7 +333,7 @@ class ProfileScreenAdmin extends StatelessWidget {
             // WhatsApp
             ListTile(
               leading: SvgPicture.asset(
-                'assets/whatsapp-svgrepo-com.svg',
+                AppImages.whatsappLogo,
                 width: 30,
                 height: 30,
               ),

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../providers/language_provider.dart';
 import '../../services/ticket_service.dart';
 import '../../widgets/gradient_app_bar.dart';
+import '../../config/theme.dart';
 
 class CheckinHistoryScreen extends StatefulWidget {
   final String? eventId;
@@ -74,7 +75,7 @@ class _CheckinHistoryScreenState extends State<CheckinHistoryScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(foregroundColor: AppTheme.errorColor),
             child: Text(isEnglish ? 'Delete' : '削除'),
           ),
         ],
@@ -131,7 +132,7 @@ class _CheckinHistoryScreenState extends State<CheckinHistoryScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(foregroundColor: AppTheme.errorColor),
             child: Text(isEnglish ? 'Delete' : '削除'),
           ),
         ],
@@ -291,9 +292,9 @@ class _CheckinHistoryScreenState extends State<CheckinHistoryScreen> {
                             )
                           : CircleAvatar(
                               backgroundColor:
-                                  Colors.green.withValues(alpha: 0.1),
+                                  AppTheme.successColor.withValues(alpha: 0.1),
                               child: const Icon(Icons.check_circle,
-                                  color: Colors.green),
+                                  color: AppTheme.successColor),
                             ),
                       title: Text(
                         ticket['userName'] ?? '',

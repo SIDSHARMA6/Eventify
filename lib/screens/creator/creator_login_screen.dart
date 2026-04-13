@@ -5,6 +5,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/language_provider.dart';
 import '../../widgets/gradient_app_bar.dart';
 import '../../config/admin_routes.dart';
+import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import 'creator_dashboard_screen.dart';
 
 class CreatorLoginScreen extends StatefulWidget {
@@ -57,9 +58,22 @@ class _CreatorLoginScreenState extends State<CreatorLoginScreen> {
     } catch (e) {
       setState(() => _isLoading = false);
       if (!mounted) return;
-      final msg = e.toString().contains('Unauthorized')
-          ? 'Unknown role. Contact admin.'
-          : e.toString().replaceFirst('Exception: ', '');
+      String msg = 'Login failed. Please try again.';
+      if (e is FirebaseAuthException) {
+        msg = e.code == 'user-not-found'
+            ? 'No user found for that email.'
+            : e.code == 'wrong-password'
+                ? 'Wrong password provided.'
+                : e.code == 'invalid-email'
+                    ? 'The email address is invalid.'
+                    : e.code == 'user-disabled'
+                        ? 'This user has been disabled.'
+                        : 'Authentication failed. Check your credentials.';
+      } else if (e.toString().contains('Unauthorized')) {
+        msg = 'Unknown role. Contact admin.';
+      } else {
+        msg = e.toString().replaceFirst('Exception: ', '');
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(msg),

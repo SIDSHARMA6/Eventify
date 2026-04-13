@@ -45,7 +45,7 @@ class _AboutAppScreenState extends State<AboutAppScreen> {
             ClipRRect(
               borderRadius: BorderRadius.circular(24),
               child: Image.asset(
-                'assets/logo.png',
+                AppImages.logo,
                 width: 120,
                 height: 120,
                 fit: BoxFit.contain,
@@ -104,28 +104,24 @@ class _AboutAppScreenState extends State<AboutAppScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _InfoRow(
-                      context: context,
                       icon: Icons.info_outline,
                       label: AppText.about(context),
                       value: AppText.aboutDescription(context),
                     ),
                     const SizedBox(height: 20),
                     _InfoRow(
-                      context: context,
                       icon: Icons.language,
                       label: AppText.languages(context),
-                      value: 'English / 日本語',
+                      value: 'English, 日本語',
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 16),
                     _InfoRow(
-                      context: context,
-                      icon: Icons.email_outlined,
+                      icon: Icons.help_outline,
                       label: AppText.contact(context),
-                      value: AppConstants.contactEmail,
+                      value: 'support@officialbestevent.wixsite.com',
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 16),
                     _InfoRow(
-                      context: context,
                       icon: Icons.copyright,
                       label: AppText.copyright(context),
                       value: AppText.copyrightText(context),
@@ -151,13 +147,11 @@ class _AboutAppScreenState extends State<AboutAppScreen> {
 }
 
 class _InfoRow extends StatelessWidget {
-  final BuildContext context;
   final IconData icon;
   final String label;
   final String value;
 
   const _InfoRow({
-    required this.context,
     required this.icon,
     required this.label,
     required this.value,

@@ -18,8 +18,7 @@ class ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    context.watch<LanguageProvider>();
-    final isEn = context.read<LanguageProvider>().currentLanguage == 'en';
+    final isEn = context.watch<LanguageProvider>().currentLanguage == 'en';
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
@@ -227,7 +226,7 @@ class ProfileScreen extends StatelessWidget {
               leading: ClipRRect(
                 borderRadius: BorderRadius.circular(4),
                 child: Image.asset(
-                  'assets/line.png',
+                  AppImages.lineLogo,
                   width: 30,
                   height: 30,
                   fit: BoxFit.cover,
@@ -254,7 +253,7 @@ class ProfileScreen extends StatelessWidget {
             // WhatsApp
             ListTile(
               leading: SvgPicture.asset(
-                'assets/whatsapp-svgrepo-com.svg',
+                AppImages.whatsappLogo,
                 width: 30,
                 height: 30,
               ),

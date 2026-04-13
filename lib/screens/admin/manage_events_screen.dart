@@ -68,7 +68,7 @@ class _ManageEventsScreenState extends State<ManageEventsScreen>
 
     setState(() {
       _isLoading = true;
-      _loadingMsg = 'Duplicating...';
+      _loadingMsg = AppText.duplicating(context);
     });
     try {
       await EventService().createEvent(duplicated);
@@ -130,15 +130,25 @@ class _ManageEventsScreenState extends State<ManageEventsScreen>
   }
 
   void _toggleVisibility(Map<String, dynamic> event) async {
-    final newHidden = !(event['isHidden'] ?? false);
     setState(() {
       _isLoading = true;
-      _loadingMsg =
-          newHidden ? AppText.hiding(context) : AppText.showing(context);
+      _loadingMsg = AppText.hiding(context); // temp — overwritten after read
     });
-
     try {
-      await EventService().toggleEventVisibility(event['id'], newHidden);
+      // FIX TOCTOU: read current value atomically inside a transaction
+      // so two simultaneous toggles don't fight each other.
+      final eventRef =
+          FirebaseFirestore.instance.collection('events').doc(event['id']);
+      bool newHidden = false;
+      await FirebaseFirestore.instance.runTransaction((tx) async {
+        final snap = await tx.get(eventRef);
+        if (!snap.exists) return;
+        newHidden = !((snap.data() as Map?)?['isHidden'] as bool? ?? false);
+        tx.update(eventRef, {
+          'isHidden': newHidden,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Text(newHidden
@@ -160,6 +170,9 @@ class _ManageEventsScreenState extends State<ManageEventsScreen>
         child: StreamBuilder<List<Map<String, dynamic>>>(
           stream: _eventsStream,
           builder: (context, snapshot) {
+            // Read language ONCE per build — not inside itemBuilder
+            // to avoid N listeners per list item.
+            final isJa = context.watch<LanguageProvider>().currentLanguage == 'ja';
             var events = snapshot.data ?? [];
             // Filter by creator email if coming from CreatorSummaryScreen
             final filter = widget.filterByEmail;
@@ -252,7 +265,7 @@ class _ManageEventsScreenState extends State<ManageEventsScreen>
                                       child: Text(
                                         LanguageHelper.getEventTitle(
                                           event,
-                                            context.watch<LanguageProvider>().currentLanguage == 'ja',
+                                            isJa,
                                         ),
                                         style: TextStyle(
                                           decoration: isHidden
@@ -293,14 +306,14 @@ class _ManageEventsScreenState extends State<ManageEventsScreen>
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                     Text(
-                                       '📍 ${context.watch<LanguageProvider>().currentLanguage == 'en' ? event['location_en'] : event['location_ja']}',
+                                       '📍 ${isJa ? event['location_ja'] : event['location_en']}',
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                     if (event['venueAddress_en'] != null ||
                                         event['venueAddress_ja'] != null)
                                       Text(
-                                        '🏢 ${context.watch<LanguageProvider>().currentLanguage == 'en' ? (event['venueAddress_en'] ?? '') : (event['venueAddress_ja'] ?? '')}',
+                                        '🏢 ${isJa ? (event['venueAddress_ja'] ?? '') : (event['venueAddress_en'] ?? '')}',
                                         style: TextStyle(
                                           fontSize: 12,
                                           color: Theme.of(context)

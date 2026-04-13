@@ -24,9 +24,15 @@ class AuthProvider extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance()
           .timeout(const Duration(seconds: 5));
-      final uid = prefs.getString('user_id');
 
-      if (uid == null) {
+      // SECURITY: userId/email are NOT stored in SharedPreferences (plaintext).
+      // Derive them from FirebaseAuth.instance.currentUser instead.
+      final firebaseUser = FirebaseAuth.instance.currentUser;
+
+      // Fall back to stored role if Firebase session exists.
+      final storedRole = prefs.getString('user_role');
+
+      if (firebaseUser == null || storedRole == null) {
         _isLoading = false;
         notifyListeners();
         return;
@@ -44,9 +50,9 @@ class AuthProvider extends ChangeNotifier {
         }
       }
 
-      _userId = uid;
-      _userEmail = prefs.getString('user_email');
-      _userRole = prefs.getString('user_role');
+      _userId = firebaseUser.uid;
+      _userEmail = firebaseUser.email;
+      _userRole = storedRole;
       _isLoading = false;
       notifyListeners();
 
@@ -105,14 +111,17 @@ class AuthProvider extends ChangeNotifier {
       }
 
       _userId = cred.user!.uid;
-      _userEmail = email.trim();
+      _userEmail = cred.user!.email;
       _userRole = role;
 
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('user_id', _userId!);
-      await prefs.setString('user_email', _userEmail!);
+      // SECURITY: Only non-sensitive role + activity timestamp are persisted.
+      // userId and email come from FirebaseAuth on every load — never from disk.
       await prefs.setString('user_role', _userRole!);
       await prefs.setString('last_activity', DateTime.now().toIso8601String());
+      // Clean up any legacy keys from old versions
+      await prefs.remove('user_id');
+      await prefs.remove('user_email');
 
       _isLoading = false;
       notifyListeners();

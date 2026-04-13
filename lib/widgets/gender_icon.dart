@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../config/theme.dart';
 
 /// Custom gender icon widget with male/female symbols
 class GenderIcon extends StatelessWidget {
@@ -17,7 +18,7 @@ class GenderIcon extends StatelessWidget {
   Widget build(BuildContext context) {
     // Exact colors from client image
     final iconColor =
-        color ?? (isMale ? const Color(0xFF00BFFF) : const Color(0xFFE91E63));
+        color ?? (isMale ? AppTheme.maleColor : AppTheme.femaleColor);
 
     return CustomPaint(
       size: Size(size, size),

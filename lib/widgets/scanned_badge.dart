@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../config/theme.dart';
 
 /// Reusable "SCANNED" badge widget — previously copy-pasted in 2 screens
 /// with inconsistent sizes. Now a single source of truth.
@@ -18,7 +19,7 @@ class ScannedBadge extends StatelessWidget {
       margin: const EdgeInsets.only(left: 4),
       padding: padding,
       decoration: BoxDecoration(
-        color: Colors.green,
+        color: AppTheme.successColor,
         borderRadius: BorderRadius.circular(4),
       ),
       child: Text(

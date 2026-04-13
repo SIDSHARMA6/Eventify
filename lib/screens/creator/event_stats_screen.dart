@@ -28,7 +28,6 @@ class _EventStatsScreenState extends State<EventStatsScreen>
   @override
   bool get wantKeepAlive => true;
 
-  bool _isAdmin = false;
   bool _isLoading = false;
   // FIX C-09: Store stream once in initState — not recreated per rebuild
   late final Stream<List<Map<String, dynamic>>> _ticketsStream;
@@ -36,7 +35,8 @@ class _EventStatsScreenState extends State<EventStatsScreen>
   @override
   void initState() {
     super.initState();
-    _isAdmin = Provider.of<AuthProvider>(context, listen: false).isAdmin;
+    // NOTE: _isAdmin is NOT cached here — it is read from context.watch in
+    // build() so that role revocations take effect immediately.
     _ticketsStream = TicketService().getReservationsByEvent(widget.event['id']);
   }
 
@@ -93,6 +93,8 @@ class _EventStatsScreenState extends State<EventStatsScreen>
             // Language read inside builder — avoids full screen rebuild on lang change
             final isJa =
                 context.watch<LanguageProvider>().currentLanguage == 'ja';
+            // Read role reactively — reflects immediate role revocations.
+            final isAdmin = context.watch<AuthProvider>().isAdmin;
             final bookings = snapshot.data ?? [];
             final event = widget.event;
 
@@ -228,7 +230,7 @@ class _EventStatsScreenState extends State<EventStatsScreen>
                     AppText.scanned(context),
                     scannedCount.toString(),
                     Icons.qr_code_scanner,
-                    Colors.green,
+                    AppTheme.successColor,
                   ),
 
                   const SizedBox(height: 24),
@@ -291,7 +293,7 @@ class _EventStatsScreenState extends State<EventStatsScreen>
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 6, vertical: 2),
                                   decoration: BoxDecoration(
-                                    color: Colors.green,
+                                    color: AppTheme.successColor,
                                     borderRadius: BorderRadius.circular(4),
                                   ),
                                   child: const Text(
@@ -314,7 +316,9 @@ class _EventStatsScreenState extends State<EventStatsScreen>
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
-                                booking['gender'] == 'male' ? 'Male' : 'Female',
+                                booking['gender'] == 'male'
+                                    ? AppText.male(context)
+                                    : AppText.female(context),
                                 style: TextStyle(
                                   color: booking['gender'] == 'male'
                                       ? AppTheme.maleColor
@@ -322,7 +326,7 @@ class _EventStatsScreenState extends State<EventStatsScreen>
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
-                              if (_isAdmin) ...[
+                              if (isAdmin) ...[
                                 const SizedBox(width: 8),
                                 IconButton(
                                   icon: const Icon(Icons.delete_outline,

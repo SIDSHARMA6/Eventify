@@ -13,6 +13,7 @@ import '../../utils/helpers.dart';
 import '../../utils/language_helper.dart';
 import '../../widgets/clickable_text.dart';
 import '../../widgets/gender_icon.dart';
+import '../../config/theme.dart';
 import '../../services/event_service.dart';
 import '../../services/ticket_service.dart';
 import '../../services/device_service.dart';
@@ -216,9 +217,8 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
   Widget _buildDateVenueCard(BuildContext context, Map<String, dynamic> event,
       bool isJa, double screenWidth) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardColor =
-        isDark ? const Color(0xFF2A2A2A) : const Color(0xFFF2F2F2);
-    final iconBg = isDark ? const Color(0xFF3A3A3A) : Colors.grey[300]!;
+    final cardColor = Theme.of(context).cardTheme.color;
+    final iconBg = Theme.of(context).colorScheme.surfaceContainerHighest;
     final iconColor = isDark ? Colors.grey[400]! : Colors.grey[700]!;
     final titleColor = isDark ? Colors.grey[100]! : Colors.grey[850]!;
     final subColor = isDark ? Colors.grey[400]! : Colors.grey[500]!;
@@ -336,8 +336,7 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
   Widget _buildGreyCard(BuildContext context, double screenWidth,
       {required String title, required Widget child}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardColor =
-        isDark ? const Color(0xFF2A2A2A) : const Color(0xFFF2F2F2);
+    final cardColor = Theme.of(context).cardTheme.color;
     final titleColor = isDark ? Colors.grey[100]! : Colors.grey[850]!;
     return Container(
       width: double.infinity,
@@ -426,8 +425,7 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
   Widget _buildBookBtn(Map<String, dynamic> event) {
     return Container(
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-            colors: [Color(0xFFFE008B), Color(0xFFFF00FF)]),
+        gradient: AppTheme.pinkGradient,
         borderRadius: BorderRadius.circular(12),
       ),
       child: ElevatedButton(

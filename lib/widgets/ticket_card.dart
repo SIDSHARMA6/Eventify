@@ -16,8 +16,10 @@ class TicketCard extends StatelessWidget {
     final title = LanguageHelper.getText(
         ticket['eventTitle_en'], ticket['eventTitle_ja'], isJa);
 
-    // QR data never changes — keep it const/stable outside language watch
-    final qrData = ticket['id'] as String;
+    // QR encodes the opaque ticketId token (TICKET-xxxxxxxxxxxx),
+    // NOT the document ID (deviceId_eventId) which is guessable.
+    // checkIn() now queries by this field, so only the token holder can scan in.
+    final qrData = ticket['ticketId'] as String? ?? ticket['id'] as String;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -53,8 +55,10 @@ class TicketCard extends StatelessWidget {
           ]),
           const Divider(height: 24),
           Center(
-              child: QrImageView(
-                  data: qrData, version: QrVersions.auto, size: 120)),
+              child: RepaintBoundary(
+                child: QrImageView(
+                    data: qrData, version: QrVersions.auto, size: 120),
+              )),
           const SizedBox(height: 12),
           Center(
               child: Text('${AppText.ticketId(context)}: $qrData',

@@ -8,6 +8,7 @@ import '../providers/language_provider.dart';
 import 'package:provider/provider.dart';
 import '../screens/user/event_details_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../config/theme.dart';
 
 class EventCalendar extends StatefulWidget {
   final String? highlightedDate;
@@ -98,7 +99,7 @@ class _EventCalendarState extends State<EventCalendar> {
             calendarStyle: CalendarStyle(
                 selectedDecoration: const BoxDecoration(
                     gradient: LinearGradient(
-                        colors: [Color(0xFFFE008B), Color(0xFFFF00FF)]),
+                        colors: [AppTheme.primaryPink, AppTheme.primaryMagenta]),
                     shape: BoxShape.circle),
                 todayDecoration: BoxDecoration(
                     color:
@@ -120,7 +121,7 @@ class _EventCalendarState extends State<EventCalendar> {
                     width: 7,
                     height: 7,
                     decoration: BoxDecoration(
-                      color: hasAdded ? const Color(0xFFFE008B) : Colors.blue,
+                      color: hasAdded ? AppTheme.primaryPink : Colors.blue,
                       shape: BoxShape.circle,
                     ),
                   ),

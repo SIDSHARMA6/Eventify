@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../services/ticket_service.dart';
 import '../providers/language_provider.dart';
 import '../utils/app_text.dart';
+import '../config/theme.dart';
 
 class LatestBookings extends StatefulWidget {
   const LatestBookings({super.key});
@@ -91,7 +92,7 @@ class _LatestBookingsState extends State<LatestBookings> {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
-                            color: const Color(0xFFFE008B),
+                            color: AppTheme.primaryPink,
                             borderRadius: BorderRadius.circular(8)),
                         child: const Text('NEW',
                             style: TextStyle(

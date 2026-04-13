@@ -1,6 +1,7 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import '../config/constants.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'firebase_service.dart';
 import 'device_service.dart';
@@ -105,7 +106,7 @@ class NotificationService {
                               offset: Offset(0, 5))
                         ]),
                     child: Row(children: [
-                      Image.asset('assets/logo.png', width: 32, height: 32),
+                      Image.asset(AppImages.logo, width: 32, height: 32),
                       const SizedBox(width: 12),
                       Expanded(
                           child: Column(
@@ -164,7 +165,16 @@ class NotificationService {
         'Confirmed for $eventTitle. ID: $ticketId', _details());
   }
 
+  String _sanitize(String text) {
+    if (text.isEmpty) return '';
+    final s = text.replaceAll(RegExp(r'[\x00-\x1F\x7F]'), ' ').trim();
+    return s.length > 255 ? '${s.substring(0, 252)}...' : s;
+  }
+
   Future<void> sendNewEventNotification(String title, String body) async {
-    await _local.show(title.hashCode, title, body, _details());
+    final cleanTitle = _sanitize(title);
+    final cleanBody = _sanitize(body);
+    if (cleanTitle.isEmpty) return;
+    await _local.show(cleanTitle.hashCode, cleanTitle, cleanBody, _details());
   }
 }

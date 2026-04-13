@@ -125,20 +125,31 @@ class TicketService {
 
   Stream<List<Map<String, dynamic>>> getCheckinHistory({String? eventId}) {
     Query q = _firebase.reservationsCollection
-        .where('isScanned', isEqualTo: true)
-        .limit(500);
+        .where('isScanned', isEqualTo: true);
     if (eventId != null) {
       q = _firebase.reservationsCollection
           .where('isScanned', isEqualTo: true)
-          .where('eventId', isEqualTo: eventId)
-          .limit(500);
+          .where('eventId', isEqualTo: eventId);
     }
     return q.snapshots().map(_mapDocs);
   }
 
-  Future<Map<String, dynamic>> checkIn(String code) async {
-    final docRef = _firebase.reservationsCollection.doc(code);
+  /// Looks up a reservation by its opaque [ticketId] field (not the doc ID).
+  /// The QR code encodes [ticketId], which is the cryptographically random
+  /// 12-char token stored in the reservation — not the guessable doc ID.
+  Future<Map<String, dynamic>> checkIn(String ticketId) async {
+    // Query by ticketId field — composite index on ticketId is not required
+    // because this is an equality filter on a single field.
+    final q = await _firebase.reservationsCollection
+        .where('ticketId', isEqualTo: ticketId)
+        .limit(1)
+        .get();
+
+    if (q.docs.isEmpty) throw Exception('ticket_not_found');
+
+    final docRef = q.docs.first.reference;
     late Map<String, dynamic> ticket;
+
     await FirebaseFirestore.instance.runTransaction((tx) async {
       final doc = await tx.get(docRef);
       if (!doc.exists) throw Exception('ticket_not_found');
@@ -174,13 +185,16 @@ class TicketService {
     });
   }
 
+  /// Bulk-deletes [tickets] atomically per group:
+  /// Each batch combines the counter decrement + document deletions in ONE
+  /// Firestore batch write, so a crash can never leave counters wrong.
   Future<void> deleteReservations(
     List<Map<String, dynamic>> tickets, {
     void Function(int completed, int total)? onProgress,
   }) async {
     if (tickets.isEmpty) return;
 
-    // Group by eventId+gender to compute per-group decrements
+    // Group by eventId+gender to compute per-group decrements.
     final Map<String, Map<String, dynamic>> groups = {};
     for (final t in tickets) {
       final eId = t['eventId'] as String? ?? '';
@@ -191,39 +205,69 @@ class TicketService {
       groups[key]!['count'] = (groups[key]!['count'] as int) + 1;
     }
 
-    // Decrement counters sequentially (each in its own transaction)
-    // then batch-delete the docs. If batch fails, counters are wrong —
-    // acceptable for admin bulk-delete which is rare and recoverable.
-    for (final g in groups.values) {
-      await _decrementBookedCount(
-          g['eventId'] as String, g['gender'] as String, g['count'] as int);
-    }
-
-    const batchSize = 500;
+    // Firestore batch max = 500 writes. We interleave counter updates with
+    // doc deletes so both succeed or fail together.
+    const batchSize = 499; // leave 1 slot for the counter update per batch
     int completed = 0;
-    for (var i = 0; i < tickets.length; i += batchSize) {
-      final chunk =
-          tickets.sublist(i, (i + batchSize).clamp(0, tickets.length));
-      final batch = FirebaseFirestore.instance.batch();
-      for (final t in chunk) {
-        batch.delete(_firebase.reservationsCollection.doc(t['id'] as String));
-      }
-      await batch.commit();
-      completed += chunk.length;
-      onProgress?.call(completed.clamp(0, tickets.length), tickets.length);
-    }
-  }
+    final ticketList = tickets.toList();
 
-  Future<void> _decrementBookedCount(
-      String eventId, String gender, int count) async {
-    if (eventId.isEmpty) return;
-    final field = gender == 'male' ? 'maleBooked' : 'femaleBooked';
-    final eventRef = _firebase.eventsCollection.doc(eventId);
-    await FirebaseFirestore.instance.runTransaction((tx) async {
-      final snap = await tx.get(eventRef);
-      if (!snap.exists) return;
-      final current = (snap.data() as Map?)?[field] as int? ?? 0;
-      tx.update(eventRef, {field: (current - count).clamp(0, current)});
-    });
+    for (var i = 0; i < ticketList.length; i += batchSize) {
+      final chunk = ticketList.sublist(
+          i, (i + batchSize).clamp(0, ticketList.length));
+
+      // Compute counter deltas for this specific chunk.
+      final Map<String, Map<String, dynamic>> chunkGroups = {};
+      for (final t in chunk) {
+        final eId = t['eventId'] as String? ?? '';
+        if (eId.isEmpty) continue;
+        final gender = t['gender'] as String? ?? 'male';
+        final key = '$eId\x00$gender';
+        chunkGroups.putIfAbsent(
+            key, () => {'eventId': eId, 'gender': gender, 'count': 0});
+        chunkGroups[key]!['count'] = (chunkGroups[key]!['count'] as int) + 1;
+      }
+
+      // One transaction per chunk: read all relevant event counters,
+      // then write decrements + deletions atomically.
+      await FirebaseFirestore.instance.runTransaction((tx) async {
+        // Read current counter values for all affected events in this chunk.
+        final Map<String, int> currentValues = {};
+        for (final g in chunkGroups.values) {
+          final eId = g['eventId'] as String;
+          final gender = g['gender'] as String;
+          final field = gender == 'male' ? 'maleBooked' : 'femaleBooked';
+          final key = '$eId\x00$gender';
+          if (!currentValues.containsKey(key)) {
+            final snap = await tx.get(_firebase.eventsCollection.doc(eId));
+            currentValues[key] = snap.exists
+                ? ((snap.data() as Map?)?[field] as int? ?? 0)
+                : 0;
+          }
+        }
+
+        // Write counter updates.
+        for (final g in chunkGroups.values) {
+          final eId = g['eventId'] as String;
+          final gender = g['gender'] as String;
+          final field = gender == 'male' ? 'maleBooked' : 'femaleBooked';
+          final key = '$eId\x00$gender';
+          final current = currentValues[key] ?? 0;
+          final decrement = g['count'] as int;
+          tx.update(
+            _firebase.eventsCollection.doc(eId),
+            {field: (current - decrement).clamp(0, current)},
+          );
+        }
+
+        // Delete reservation docs.
+        for (final t in chunk) {
+          tx.delete(
+              _firebase.reservationsCollection.doc(t['id'] as String));
+        }
+      });
+
+      completed += chunk.length;
+      onProgress?.call(completed.clamp(0, ticketList.length), ticketList.length);
+    }
   }
 }

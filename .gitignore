@@ -162,3 +162,6 @@ DEPLOYMENT_GUIDE.md
 key.properties
 *.jks
 *.keystore
+
+# Sensitive configuration files
+lib/config/constants.dart

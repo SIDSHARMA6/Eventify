@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../config/constants.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 import '../utils/language_helper.dart';
 import 'gender_icon.dart';
@@ -50,7 +51,7 @@ class _ImageCarouselState extends State<ImageCarousel> {
                               color: Colors.grey[200],
                               child: const Icon(Icons.broken_image, size: 50)),
                         )
-                      : Image.asset('assets/images/placeholder.png',
+                      : Image.asset(AppImages.placeholder,
                           fit: BoxFit.cover),
                 ))
             .toList(),

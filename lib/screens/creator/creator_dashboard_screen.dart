@@ -14,6 +14,8 @@ import '../../widgets/status_badge.dart';
 import '../admin/qr_scanner_screen.dart';
 import 'create_event_screen.dart';
 import 'event_stats_screen.dart';
+import '../../config/constants.dart';
+import '../../config/theme.dart';
 
 class CreatorDashboardScreen extends StatefulWidget {
   const CreatorDashboardScreen({super.key});
@@ -109,10 +111,22 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
   }
 
   Future<void> _toggleVisibility(Map<String, dynamic> event) async {
-    final newHidden = !(event['isHidden'] ?? false);
     setState(() => _isLoading = true);
     try {
-      await EventService().toggleEventVisibility(event['id'], newHidden);
+      // FIX TOCTOU: read current value inside a transaction so concurrent
+      // toggles from two sessions don't overwrite each other.
+      final eventRef =
+          FirebaseFirestore.instance.collection('events').doc(event['id']);
+      bool newHidden = false;
+      await FirebaseFirestore.instance.runTransaction((tx) async {
+        final snap = await tx.get(eventRef);
+        if (!snap.exists) return;
+        newHidden = !((snap.data() as Map?)?['isHidden'] as bool? ?? false);
+        tx.update(eventRef, {
+          'isHidden': newHidden,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -172,6 +186,8 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
         builder: (context, snapshot) {
           // Language read inside builder — avoids full screen rebuild on lang change
           context.watch<LanguageProvider>();
+          // Auth read inside builder — role changes (e.g. demotion) reflect immediately
+          context.watch<AuthProvider>();
           final myEvents = snapshot.data ?? [];
 
           return PopScope(
@@ -203,8 +219,10 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
                 padding: const EdgeInsets.all(16),
                 children: [
                   // QR Scanner Button — admin and creator
-                  if (Provider.of<AuthProvider>(context, listen: false).isAdmin ||
-                      Provider.of<AuthProvider>(context, listen: false).isCreator)
+                  // Use context.read — role comes from AuthProvider which is
+                  // watched by the builder via context.watch above.
+                  if (context.read<AuthProvider>().isAdmin ||
+                      context.read<AuthProvider>().isCreator)
                     GradientButtonIcon(
                       onPressed: () {
                         Navigator.push(
@@ -309,11 +327,11 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
                               if (isHidden)
                                 StatusBadge(
                                     label: AppText.statusHidden(context),
-                                    color: Colors.orange)
+                                    color: AppTheme.warningColor)
                               else if (event['isDuplicated'] == true)
                                 StatusBadge(
                                     label: AppText.statusDuplicated(context),
-                                    color: Colors.blue)
+                                    color: AppTheme.indigoLight)
                               else if (_isEventOutsideVisibleRange(event))
                                 StatusBadge(
                                     label: AppText.statusPastFuture(context),
@@ -321,7 +339,7 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
                               else
                                 StatusBadge(
                                     label: AppText.statusActive(context),
-                                    color: Colors.green),
+                                    color: AppTheme.successColor),
                             ],
                           ),
                           subtitle:
@@ -470,6 +488,6 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
       final img = images[0];
       if (img.startsWith('http')) return NetworkImage(img);
     }
-    return const AssetImage('assets/images/placeholder.png');
+    return const AssetImage(AppImages.placeholder);
   }
 }

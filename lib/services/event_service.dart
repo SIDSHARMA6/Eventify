@@ -50,9 +50,11 @@ class EventService {
     yield* _allEventsStream;
   }
 
-  /// Visible events filtered by location. 'All' returns getEvents().
-  Stream<List<Map<String, dynamic>>> getEventsByLocation(
-          String loc) =>
+  /// Visible events filtered by location — kept for completeness but
+  /// filtering is done client-side in HomeScreen via _filterAndSort.
+  /// DO NOT USE from new call sites — may be removed in a future cleanup.
+  @Deprecated('Filter client-side via HomeScreen._filterAndSort instead')
+  Stream<List<Map<String, dynamic>>> getEventsByLocation(String loc) =>
       loc == 'All'
           ? _eventsStream
           : _firebase.eventsCollection
@@ -93,8 +95,11 @@ class EventService {
     final user = FirebaseAuth.instance.currentUser!;
     final payload = <String, dynamic>{
       ...data,
-      'createdBy': user.uid,
-      'createdByEmail': user.email ?? '',
+      // Preserve existing createdBy (e.g. when admin duplicates a creator's
+      // event the original creator retains ownership).
+      // Fall back to the currently authenticated user only for new events.
+      'createdBy': data['createdBy'] ?? user.uid,
+      'createdByEmail': data['createdByEmail'] ?? (user.email ?? ''),
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
       'maleBooked': data['maleBooked'] ?? 0,
