@@ -80,10 +80,7 @@ class _AboutAppScreenState extends State<AboutAppScreen> {
             FutureBuilder<Map<String, dynamic>?>(
               future: _future,
               builder: (context, snap) {
-                final isEn =
-                    Provider.of<LanguageProvider>(context, listen: false)
-                            .currentLanguage ==
-                        'en';
+                final isEn = context.watch<LanguageProvider>().currentLanguage == 'en';
 
                 if (snap.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());

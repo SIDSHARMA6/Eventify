@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import '../../utils/app_text.dart';
 import '../../providers/language_provider.dart';
@@ -19,7 +20,14 @@ class _ManageLocationsScreenState extends State<ManageLocationsScreen>
   bool get wantKeepAlive => true;
 
   final _locationService = LocationManagementService();
+  late final Stream<List<Map<String, dynamic>>> _locationsStream;
   bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _locationsStream = _locationService.getAllLocations();
+  }
 
   void _showLocationDialog({Map<String, dynamic>? location}) async {
     final isEditing = location != null;
@@ -86,8 +94,7 @@ class _ManageLocationsScreenState extends State<ManageLocationsScreen>
                   });
                 }
                 if (mounted) {
-                  messenger.showSnackBar(
-                      SnackBar(content: Text(successMsg)));
+                  messenger.showSnackBar(SnackBar(content: Text(successMsg)));
                 }
               } catch (e) {
                 if (mounted) {
@@ -150,7 +157,6 @@ class _ManageLocationsScreenState extends State<ManageLocationsScreen>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    context.watch<LanguageProvider>();
 
     return LoadingOverlay(
         isLoading: _isLoading,
@@ -168,8 +174,10 @@ class _ManageLocationsScreenState extends State<ManageLocationsScreen>
             ],
           ),
           body: StreamBuilder<List<Map<String, dynamic>>>(
-            stream: _locationService.getAllLocations(),
+            stream: _locationsStream,
             builder: (context, snapshot) {
+              // Language read inside builder — avoids rebuilding ReorderableListView on lang change
+              context.watch<LanguageProvider>();
               final locations = snapshot.data ?? [];
 
               if (snapshot.connectionState == ConnectionState.waiting &&
@@ -212,11 +220,17 @@ class _ManageLocationsScreenState extends State<ManageLocationsScreen>
                   final reordered = List<Map<String, dynamic>>.from(locations);
                   final item = reordered.removeAt(oldIndex);
                   reordered.insert(newIndex, item);
-                  // Update order field in Firestore
+                  // FIX L-08: batch all order updates in a single Firestore round-trip
+                  final batch = FirebaseFirestore.instance.batch();
                   for (int i = 0; i < reordered.length; i++) {
-                    await _locationService
-                        .updateLocation(reordered[i]['id'], {'order': i});
+                    batch.update(
+                      FirebaseFirestore.instance
+                          .collection('locations')
+                          .doc(reordered[i]['id'] as String),
+                      {'order': i},
+                    );
                   }
+                  await batch.commit();
                 },
                 itemBuilder: (context, index) {
                   final location = locations[index];

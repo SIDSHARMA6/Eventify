@@ -1,5 +1,8 @@
 import 'package:eventify/widgets/gradient_icon.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../providers/language_provider.dart';
+import '../../utils/app_text.dart';
 
 class BottomNavAdmin extends StatelessWidget {
   final int currentIndex;
@@ -13,6 +16,7 @@ class BottomNavAdmin extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    context.watch<LanguageProvider>();
     return BottomNavigationBar(
       currentIndex: currentIndex,
       onTap: onTap,
@@ -21,19 +25,19 @@ class BottomNavAdmin extends StatelessWidget {
           icon: currentIndex == 0
               ? const GradientIcon(icon: Icons.event)
               : const Icon(Icons.event),
-          label: 'Events',
+          label: AppText.events(context),
         ),
         BottomNavigationBarItem(
           icon: currentIndex == 1
               ? const GradientIcon(icon: Icons.confirmation_number)
               : const Icon(Icons.confirmation_number),
-          label: 'Tickets',
+          label: AppText.tickets(context),
         ),
         BottomNavigationBarItem(
           icon: currentIndex == 2
               ? const GradientIcon(icon: Icons.person)
               : const Icon(Icons.person),
-          label: 'Profile',
+          label: AppText.profile(context),
         ),
       ],
     );

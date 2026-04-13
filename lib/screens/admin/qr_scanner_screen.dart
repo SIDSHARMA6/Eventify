@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../../utils/app_text.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/language_provider.dart';
 import '../../services/ticket_service.dart';
 import '../../widgets/gradient_app_bar.dart';
 import 'checkin_history_screen.dart';
@@ -56,11 +57,11 @@ class _QRScannerScreenState extends State<QRScannerScreen>
     final checkInSuccessTitle = AppText.checkInSuccessful(context);
     final alreadyCheckedInTitle = AppText.alreadyCheckedIn(context);
     final noPermissionMsg =
-        'You must be logged in as admin to check in tickets.';
+        'You must be logged in as admin or creator to check in tickets.';
 
-    // Admin role check
+    // Admin or Creator role check
     final auth = Provider.of<AuthProvider>(context, listen: false);
-    if (!auth.isAdmin) {
+    if (!auth.isAdmin && !auth.isCreator) {
       _showResultDialog(invalidTitle, noPermissionMsg, false);
       await Future.delayed(const Duration(seconds: 2));
       if (mounted) setState(() => _isProcessing = false);
@@ -128,6 +129,7 @@ class _QRScannerScreenState extends State<QRScannerScreen>
 
   @override
   Widget build(BuildContext context) {
+    context.watch<LanguageProvider>();
     return Scaffold(
       appBar: GradientAppBar(
         title: Text(AppText.scanTicketQR(context),

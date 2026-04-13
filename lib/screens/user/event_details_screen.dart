@@ -4,6 +4,9 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:add_2_calendar/add_2_calendar.dart' as cal;
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../services/notification_service.dart';
+
 import '../../providers/language_provider.dart';
 import '../../utils/app_text.dart';
 import '../../utils/helpers.dart';
@@ -26,17 +29,23 @@ class EventDetailsScreen extends StatefulWidget {
 class _EventDetailsScreenState extends State<EventDetailsScreen> {
   bool _isChecking = true;
   bool _isBooked = false;
+  bool _disposed =
+      false; // FIX-022: guard against subscription assigned after dispose
   StreamSubscription<bool>? _bookingSub;
+
+  late final Stream<Map<String, dynamic>?> _eventStream;
 
   @override
   void initState() {
     super.initState();
+    _eventStream = EventService().watchEvent(widget.event['id']);
     _watchBooking();
   }
 
   Future<void> _watchBooking() async {
     try {
       final dId = await DeviceService().getDeviceId();
+      if (_disposed || !mounted) return; // FIX-022: skip if already disposed
       _bookingSub = TicketService()
           .watchReservation(dId, widget.event['id'])
           .listen((booked) {
@@ -56,15 +65,15 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
 
   @override
   void dispose() {
+    _disposed = true; // FIX-022: set before cancel so async gap is guarded
     _bookingSub?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    context.watch<LanguageProvider>();
     return StreamBuilder<Map<String, dynamic>?>(
-      stream: EventService().watchEvent(widget.event['id']),
+      stream: _eventStream,
       builder: (context, snap) {
         final event = snap.data ?? widget.event; // fallback to initial data
         return _buildContent(context, event);
@@ -73,9 +82,7 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
   }
 
   Widget _buildContent(BuildContext context, Map<String, dynamic> event) {
-    final isJa =
-        Provider.of<LanguageProvider>(context, listen: false).currentLanguage ==
-            'ja';
+    final isJa = context.watch<LanguageProvider>().currentLanguage == 'ja';
     final title = LanguageHelper.getEventTitle(event, isJa);
     final desc = LanguageHelper.getEventDescription(event, isJa);
     final images = LanguageHelper.getImages(event, isJa);
@@ -134,9 +141,8 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
                       _buildAction(
                         context,
                         Icons.share,
-                        () => Share.share(isJa
-                            ? 'Check out $title on Best Evento!'
-                            : 'Best Eventoで「$title」をチェック！'),
+                        () =>
+                            Share.share(AppText.shareEventText(context, title)),
                       ),
                       SizedBox(width: screenWidth * 0.025),
                       _buildAction(context, Icons.event_available,
@@ -147,7 +153,7 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
                   _buildGreyCard(
                     context,
                     screenWidth,
-                    title: isJa ? 'イベントについて' : 'About Event',
+                    title: AppText.aboutEvent(context),
                     child: ClickableText(
                         text: desc,
                         style: Theme.of(context).textTheme.bodyLarge),
@@ -200,8 +206,8 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
           child: _isChecking
               ? const LinearProgressIndicator()
               : _isBooked
-                  ? _buildBookedIndicator(isJa)
-                  : _buildBookBtn(),
+                  ? _buildBookedIndicator()
+                  : _buildBookBtn(event),
         ),
       ),
     );
@@ -399,7 +405,7 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
     );
   }
 
-  Widget _buildBookedIndicator(bool isJa) {
+  Widget _buildBookedIndicator() {
     return Container(
       height: 56,
       decoration: BoxDecoration(
@@ -409,7 +415,7 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
       ),
       child: Center(
         child: Text(
-          isJa ? 'チケット取得済み' : 'Ticket Booked',
+          AppText.ticketBooked(context),
           style:
               const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
         ),
@@ -417,7 +423,7 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
     );
   }
 
-  Widget _buildBookBtn() {
+  Widget _buildBookBtn(Map<String, dynamic> event) {
     return Container(
       decoration: BoxDecoration(
         gradient: const LinearGradient(
@@ -428,7 +434,8 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
         onPressed: () async {
           await showDialog(
               context: context,
-              builder: (_) => BookingDialog(event: widget.event));
+              builder: (_) =>
+                  BookingDialog(event: event)); // FIX-023: live event data
           // Stream auto-updates _isBooked — no manual refresh needed
         },
         style: ElevatedButton.styleFrom(
@@ -446,17 +453,46 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
   }
 
   void _launchMap(Map<String, dynamic> event) async {
-    final url = Uri.parse(event['mapLink'] ?? 'https://maps.google.com');
-    if (await canLaunchUrl(url)) {
-      await launchUrl(url, mode: LaunchMode.externalApplication);
+    final rawLink = (event['mapLink'] as String?)?.trim();
+    if (rawLink == null || rawLink.isEmpty || !rawLink.startsWith('https://')) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(AppText.mapUnavailable(context))),
+        );
+      }
+      return;
+    }
+    try {
+      final url = Uri.parse(rawLink);
+      if (await canLaunchUrl(url)) {
+        if (!mounted) return;
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(AppText.mapError(context, e.toString())),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
-  void _addToCal(Map<String, dynamic> event, bool isJa) {
+  void _addToCal(Map<String, dynamic> event, bool isJa) async {
     try {
       final date = DateTime.parse(event['date']);
-      final start = event['startTime'].split(':');
+      final start = (event['startTime'] as String? ?? '18:00').split(':');
       final end = (event['endTime'] as String? ?? '23:00').split(':');
+
+      final prefs = await SharedPreferences.getInstance();
+      if (!mounted) return;
+
+      final key = 'cal_added_${event['id']}';
+      final alreadyAdded = prefs.getBool(key) ?? false;
+
+      // 1. Open Native Calendar (Always)
       cal.Add2Calendar.addEvent2Cal(cal.Event(
         title: LanguageHelper.getEventTitle(event, isJa),
         description: LanguageHelper.getEventDescription(event, isJa),
@@ -466,6 +502,22 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
         endDate: DateTime(date.year, date.month, date.day, int.parse(end[0]),
             int.parse(end[1])),
       ));
+
+      // 2. Initial Setup: FCM + In-app confirmation
+      if (!alreadyAdded) {
+        await NotificationService().scheduleEventReminder(
+            LanguageHelper.getEventTitle(event, isJa),
+            date,
+            event['startTime'] ?? '18:00');
+        if (!mounted) return;
+
+        await prefs.setBool(key, true);
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(AppText.reminderScheduled(context))),
+        );
+      }
     } catch (_) {}
   }
 }

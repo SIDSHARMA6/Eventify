@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import '../utils/app_text.dart';
 import 'gradient_app_bar.dart';
 
 class WebViewScreen extends StatefulWidget {
@@ -40,7 +41,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
     return Scaffold(
       appBar: GradientAppBar(
         title: Text(
-          widget.isJa ? widget.titleJa : widget.titleEn,
+          AppText.webViewTitle(context, widget.titleEn, widget.titleJa),
           style: const TextStyle(color: Colors.white),
         ),
       ),

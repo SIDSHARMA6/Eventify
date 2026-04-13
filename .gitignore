@@ -160,4 +160,5 @@ DEPLOYMENT_GUIDE.md
 # Example files
 *.example
 key.properties
-name.jks
+*.jks
+*.keystore

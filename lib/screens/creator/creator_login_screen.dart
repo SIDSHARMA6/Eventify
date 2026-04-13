@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../utils/app_text.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/language_provider.dart';
 import '../../widgets/gradient_app_bar.dart';
+import '../../config/admin_routes.dart';
 import 'creator_dashboard_screen.dart';
-import '../admin/admin_dashboard_screen.dart';
 
 class CreatorLoginScreen extends StatefulWidget {
   const CreatorLoginScreen({super.key});
@@ -45,10 +46,8 @@ class _CreatorLoginScreenState extends State<CreatorLoginScreen> {
       if (!mounted) return;
 
       if (authProvider.isAdmin) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const AdminDashboardScreen()),
-        );
+        // FIX L-37: Navigate to admin home wrapper (has bottom nav) not dashboard directly
+        Navigator.pushReplacementNamed(context, AdminRoutes.home);
       } else {
         Navigator.pushReplacement(
           context,
@@ -72,6 +71,7 @@ class _CreatorLoginScreenState extends State<CreatorLoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    context.read<LanguageProvider>();
     return Scaffold(
       appBar: GradientAppBar(
         title: Text(

@@ -1,5 +1,4 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
 class FirebaseService {
@@ -8,7 +7,7 @@ class FirebaseService {
   FirebaseService._internal();
 
   final firestore = FirebaseFirestore.instance;
-  final auth = FirebaseAuth.instance;
+  // auth field removed — callers use FirebaseAuth.instance directly
   final messaging = FirebaseMessaging.instance;
 
   CollectionReference get eventsCollection => firestore.collection('events');

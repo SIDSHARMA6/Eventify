@@ -31,8 +31,12 @@ class AppText {
   static String latestBookings(BuildContext context) =>
       _getText(context, 'Latest Bookings', '最新の予約');
   static String eventCalendar(BuildContext context) =>
-      _getText(context, 'Event Calendar', 'カレンダー');
+      _getText(context, 'Event Calendar', 'イベントカレンダー');
   static String all(BuildContext context) => _getText(context, 'All', 'すべて');
+  static String close(BuildContext context) =>
+      _getText(context, 'Close', '閉じる');
+  static String cancel(BuildContext context) =>
+      _getText(context, 'Cancel', 'キャンセル');
 
   // Event Details
   static String eventDetails(BuildContext context) =>
@@ -50,12 +54,26 @@ class AppText {
       _getText(context, 'View Map', '地図を見る');
   static String shareApp(BuildContext context) =>
       _getText(context, 'Share Event', 'イベントを共有する');
+  static String shareEventText(BuildContext context, String title) => _getText(
+      context,
+      'Check out $title on Best Evento!\nhttps://officialbestevent.wixsite.com/bestevento',
+      'Best Eventoで「$title」をチェック！\nhttps://officialbestevent.wixsite.com/bestevento');
   static String venueAddress(BuildContext context) =>
       _getText(context, 'Venue Address', '会場住所');
   static String addToCalendar(BuildContext context) =>
       _getText(context, 'Add to Calendar', 'カレンダーに追加');
   static String pricing(BuildContext context) =>
       _getText(context, 'Pricing', '料金');
+  static String aboutEvent(BuildContext context) =>
+      _getText(context, 'About Event', 'イベントについて');
+  static String mapUnavailable(BuildContext context) => _getText(
+      context, 'Map link unavailable or insecure', 'マップリンクが利用できないか安全ではありません');
+  static String mapError(BuildContext context, String err) =>
+      _getText(context, 'Could not open map: $err', 'マップを開けませんでした: $err');
+  static String reminderScheduled(BuildContext context) => _getText(
+      context, 'Scheduled reminder & synced!', 'カレンダーに追加され、リマインダーが設定されました！');
+  static String ticketBooked(BuildContext context) =>
+      _getText(context, 'Ticket Booked', 'チケット取得済み');
 
   // Booking
   static String bookTicket(BuildContext context) =>
@@ -66,8 +84,6 @@ class AppText {
       _getText(context, 'Select Gender', '性別を選択');
   static String confirmBooking(BuildContext context) =>
       _getText(context, 'Confirm Booking', '予約確定');
-  static String cancel(BuildContext context) =>
-      _getText(context, 'Cancel', 'キャンセル');
 
   // My Tickets
   static String myTickets(BuildContext context) =>
@@ -87,6 +103,10 @@ class AppText {
       _getText(context, 'Cancel Ticket', 'チケットキャンセル');
   static String viewTicket(BuildContext context) =>
       _getText(context, 'View Ticket', 'チケットを見る');
+  static String cancelling(BuildContext context) =>
+      _getText(context, 'Cancelling...', 'キャンセル中...');
+  static String myTicketsTitle(BuildContext context) => _getText(
+      context, 'My Tickets - Best Evento 🎉', 'マイチケット - Best Evento 🎉');
 
   // Profile
   static String language(BuildContext context) =>
@@ -113,6 +133,7 @@ class AppText {
       _getText(context, 'Cancellation Policy', 'キャンセルポリシー');
   static String contactUs(BuildContext context) =>
       _getText(context, 'Contact Us', 'お問い合わせ');
+  static String faq(BuildContext context) => _getText(context, 'FAQ', 'よくある質問');
   static String version(BuildContext context) =>
       _getText(context, 'Version', 'バージョン');
 
@@ -136,7 +157,21 @@ class AppText {
   static String makeRecurring(BuildContext context) =>
       _getText(context, 'Make Recurring', '定期的にする');
 
+  static String hiding(BuildContext context) =>
+      _getText(context, 'Hiding...', '非表示中...');
+  static String showing(BuildContext context) =>
+      _getText(context, 'Showing...', '表示中...');
+  static String duplicating(BuildContext context) =>
+      _getText(context, 'Duplicating...', '複製中...');
+  static String eventHidden(BuildContext context) =>
+      _getText(context, 'Event hidden', 'イベントを非表示にしました');
+  static String eventVisible(BuildContext context) =>
+      _getText(context, 'Event visible', 'イベントを表示しました');
+  static String deletingEvent(BuildContext context) =>
+      _getText(context, 'Deleting event...', 'イベントを削除中...');
+
   // Admin
+
   static String adminLogin(BuildContext context) =>
       _getText(context, 'Admin Login', '管理者ログイン');
   static String adminDashboard(BuildContext context) =>
@@ -249,6 +284,11 @@ class AppText {
       _getText(context, 'Delete Creator', 'クリエイターを削除');
   static String noCreatorsYet(BuildContext context) =>
       _getText(context, 'No creators yet', 'クリエイターがいません');
+  static String creatorsMustBeAddedFromConsole(BuildContext context) =>
+      _getText(context, 'Creators must be added from Firebase Console',
+          'クリエイターはFirebase Consoleから追加してください');
+  static String deletingCreator(BuildContext context) =>
+      _getText(context, 'Deleting creator...', '削除中...');
   static String tapToAddCreator(BuildContext context) =>
       _getText(context, 'Tap + to add a creator', '+をタップしてクリエイターを追加');
   static String add(BuildContext context) => _getText(context, 'Add', '追加');
@@ -337,6 +377,13 @@ class AppText {
       _getText(context, 'Select Image (English)', '画像を選択（英語）');
   static String selectImageJa(BuildContext context) =>
       _getText(context, 'Select Image (Japanese)', '画像を選択（日本語）');
+  static String atLeastOneImageReq(BuildContext context) =>
+      _getText(context, 'At least one image is required', '少なくとも1枚の画像が必要です');
+  static String maxImagesReached(BuildContext context) =>
+      _getText(context, 'Maximum 10 images reached', '最大10枚の画像に達しました');
+  static String pickImageMax(BuildContext context, int count, int max) =>
+      _getText(context, 'Pick Image ($count/$max) - Max 3MB',
+          '画像を選択 ($count/$max) - 最大 3MB');
 
   // Profile & Contact
   static String line(BuildContext context) => _getText(context, 'LINE', 'LINE');
@@ -347,7 +394,15 @@ class AppText {
   static String lineAppNotFound(BuildContext context) =>
       _getText(context, 'LINE app not found', 'LINEアプリが見つかりません');
 
+  static String whatsapp(BuildContext context) =>
+      _getText(context, 'WhatsApp', 'WhatsApp');
+  static String openWhatsapp(BuildContext context) =>
+      _getText(context, 'Open WhatsApp', 'WhatsAppを開く');
+  static String whatsappAppNotFound(BuildContext context) =>
+      _getText(context, 'WhatsApp app not found', 'WhatsAppアプリが見つかりません');
+
   // Error Messages
+
   static String pleaseFillAllFields(BuildContext context) =>
       _getText(context, 'Please fill all fields', 'すべてのフィールドを入力してください');
   static String emailCannotBeEmpty(BuildContext context) =>
@@ -362,6 +417,12 @@ class AppText {
   // Stats
   static String totalBookings(BuildContext context) =>
       _getText(context, 'Total Bookings', '総予約数');
+  static String allTickets(BuildContext context) =>
+      _getText(context, 'All Tickets', '全チケット');
+  static String deleteTicket(BuildContext context) =>
+      _getText(context, 'Delete Ticket', 'チケットを削除');
+  static String keepTicket(BuildContext context) =>
+      _getText(context, 'Keep', '保持');
 
   // About App Screen
   static String about(BuildContext context) =>
@@ -378,10 +439,101 @@ class AppText {
       _getText(context, 'Copyright', '著作権');
   static String copyrightText(BuildContext context) => _getText(
       context,
-      '© 2026 Best Evento. All rights reserved.',
-      '© 2026 Best Evento. All rights reserved.');
+      '© ${DateTime.now().year} Best Evento. All rights reserved.',
+      '© ${DateTime.now().year} Best Evento. All rights reserved.');
   static String madeWithLove(BuildContext context) =>
       _getText(context, 'Made with ❤️ in Japan', '日本で❤️を込めて作成');
   static String versionLabel(BuildContext context) =>
       _getText(context, 'Version', 'バージョン');
+  static String noBookingsYet(BuildContext context) =>
+      _getText(context, 'No bookings yet', 'まだ予約がありません');
+  static String recentBookingsEmpty(BuildContext context) =>
+      _getText(context, 'Recent bookings will appear here.', 'ここに最新の予約が表示されます');
+  static String recentBookings(BuildContext context) =>
+      _getText(context, 'Recent Bookings', '最近の予約');
+  static String scanned(BuildContext context) =>
+      _getText(context, 'Scanned', 'スキャン済み');
+  static String femaleRemaining(BuildContext context) =>
+      _getText(context, 'Female Remaining', '女性の残り');
+  static String femaleBookings(BuildContext context) =>
+      _getText(context, 'Female Bookings', '女性の予約');
+  static String maleRemaining(BuildContext context) =>
+      _getText(context, 'Male Remaining', '男性の残り');
+  static String maleBookings(BuildContext context) =>
+      _getText(context, 'Male Bookings', '男性の予約');
+  static String tapToViewAll(BuildContext context) =>
+      _getText(context, 'Tap to view all', 'タップしてすべて表示');
+  static String statusHidden(BuildContext context) =>
+      _getText(context, 'HIDDEN', '非表示');
+  static String statusDuplicated(BuildContext context) =>
+      _getText(context, 'DUPLICATED', '複製済み');
+  static String statusPastFuture(BuildContext context) =>
+      _getText(context, 'PAST/FUTURE', '過去/未来');
+  static String statusActive(BuildContext context) =>
+      _getText(context, 'ACTIVE', '公開中');
+  static String eventsCreatedCount(BuildContext context, int count) =>
+      _getText(context, '$count events created', '$count イベント作成済み');
+  static String noEventsCreatedYet(BuildContext context) =>
+      _getText(context, 'No events created yet', '作成したイベントはまだありません');
+
+  static String englishVersion(BuildContext context) =>
+      _getText(context, 'English Version', '英語版');
+  static String japaneseVersion(BuildContext context) =>
+      _getText(context, 'Japanese Version', '日本語版');
+  static String titleEnglish(BuildContext context) =>
+      _getText(context, 'Title (English) *', 'タイトル (英語) *');
+  static String locationEnglish(BuildContext context) =>
+      _getText(context, 'Location (English) *', '場所 (英語) *');
+  static String titleJapanese(BuildContext context) =>
+      _getText(context, 'Title (Japanese)', 'タイトル (日本語)');
+  static String venueDetails(BuildContext context) =>
+      _getText(context, 'Venue Details', '会場詳細');
+  static String venueNameEnglish(BuildContext context) =>
+      _getText(context, 'Venue Name (English) *', '会場名 (英語) *');
+  static String eventDateLabel(BuildContext context) =>
+      _getText(context, 'Event Date', '開催日');
+  static String startTimeLabel(BuildContext context) =>
+      _getText(context, 'Start Time', '開始時間');
+  static String endDateLabel(BuildContext context) =>
+      _getText(context, 'End Date', '終了日');
+  static String endTimeLabel(BuildContext context) =>
+      _getText(context, 'End Time', '終了時間');
+  static String malePriceLabel(BuildContext context) =>
+      _getText(context, 'Male Price (¥) *', '男性料金 (¥) *');
+  static String femalePriceLabel(BuildContext context) =>
+      _getText(context, 'Female Price (¥) *', '女性料金 (¥) *');
+  static String maleLimitLabel(BuildContext context) =>
+      _getText(context, 'Male Limit *', '男性の制限 *');
+  static String femaleLimitLabel(BuildContext context) =>
+      _getText(context, 'Female Limit *', '女性の制限 *');
+  static String hideEventLabel(BuildContext context) =>
+      _getText(context, 'Hide Event', 'イベントを非表示にする');
+  static String hideEventDesc(BuildContext context) => _getText(
+      context, 'Hide this event from regular users', 'このイベントを一般ユーザーから隠します');
+  static String recurringEventLabel(BuildContext context) =>
+      _getText(context, 'Recurring Event', '定期イベント');
+
+  static String allFilter(BuildContext context) =>
+      _getText(context, 'All', 'すべて');
+  static String activeFilter(BuildContext context) =>
+      _getText(context, 'Active', '有効');
+  static String totalLabel(BuildContext context) =>
+      _getText(context, 'Total', '合計');
+
+  static String ticketIdPrefix(BuildContext context, String id) =>
+      _getText(context, 'Ticket ID: $id', 'チケットID: $id');
+
+  static String adminAccessOnly(BuildContext context) =>
+      _getText(context, 'Admin access only', '管理者アクセスのみ');
+  static String adminLoginTitle(BuildContext context) =>
+      _getText(context, 'Admin Login', '管理者ログイン');
+  static String adminPortal(BuildContext context) =>
+      _getText(context, 'Admin Portal', '管理者ポータル');
+  static String exitAppTitle(BuildContext context) =>
+      _getText(context, 'Exit App', 'アプリを終了');
+  static String exitAppDesc(BuildContext context) =>
+      _getText(context, 'Do you want to exit the app?', 'アプリを終了しますか？');
+  static String webViewTitle(
+          BuildContext context, String titleEn, String titleJa) =>
+      _getText(context, titleEn, titleJa);
 }

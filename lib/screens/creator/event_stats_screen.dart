@@ -30,35 +30,32 @@ class _EventStatsScreenState extends State<EventStatsScreen>
 
   bool _isAdmin = false;
   bool _isLoading = false;
+  // FIX C-09: Store stream once in initState — not recreated per rebuild
+  late final Stream<List<Map<String, dynamic>>> _ticketsStream;
 
   @override
   void initState() {
     super.initState();
-    _checkAdminRole();
-  }
-
-  void _checkAdminRole() {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    setState(() {
-      _isAdmin = authProvider.isAdmin;
-    });
+    _isAdmin = Provider.of<AuthProvider>(context, listen: false).isAdmin;
+    _ticketsStream = TicketService().getReservationsByEvent(widget.event['id']);
   }
 
   Future<void> _deleteTicket(Map<String, dynamic> ticket) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete Ticket'),
-        content: Text('Delete ticket for ${ticket['userName']}?'),
+        title: Text(AppText.deleteTicket(context)),
+        content: Text('${AppText.delete(context)}: ${ticket['userName']}?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Keep'),
+            child: Text(AppText.keepTicket(context)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Delete'),
+            style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.error),
+            child: Text(AppText.delete(context)),
           ),
         ],
       ),
@@ -85,15 +82,17 @@ class _EventStatsScreenState extends State<EventStatsScreen>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    context.watch<LanguageProvider>();
 
     // Single stream — active tickets only
     return LoadingOverlay(
         isLoading: _isLoading,
-        message: 'Deleting...',
+        message: AppText.loading(context),
         child: StreamBuilder<List<Map<String, dynamic>>>(
-          stream: TicketService().getReservationsByEvent(widget.event['id']),
+          stream: _ticketsStream,
           builder: (context, snapshot) {
+            // Language read inside builder — avoids full screen rebuild on lang change
+            final isJa =
+                context.watch<LanguageProvider>().currentLanguage == 'ja';
             final bookings = snapshot.data ?? [];
             final event = widget.event;
 
@@ -129,13 +128,7 @@ class _EventStatsScreenState extends State<EventStatsScreen>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            LanguageHelper.getEventTitle(
-                              event,
-                              Provider.of<LanguageProvider>(context,
-                                          listen: false)
-                                      .currentLanguage ==
-                                  'ja',
-                            ),
+                            LanguageHelper.getEventTitle(event, isJa),
                             style: Theme.of(context)
                                 .textTheme
                                 .titleLarge
@@ -165,7 +158,7 @@ class _EventStatsScreenState extends State<EventStatsScreen>
                     },
                     child: _buildStatCard(
                       context,
-                      'Total Bookings',
+                      AppText.totalBookings(context),
                       totalBookings.toString(),
                       Icons.confirmation_number,
                       Theme.of(context).primaryColor,
@@ -181,7 +174,7 @@ class _EventStatsScreenState extends State<EventStatsScreen>
                       Expanded(
                         child: _buildStatCard(
                           context,
-                          'Male Bookings',
+                          AppText.maleBookings(context),
                           '$maleBookings / $maleLimit',
                           Icons.male,
                           AppTheme.maleColor,
@@ -191,7 +184,7 @@ class _EventStatsScreenState extends State<EventStatsScreen>
                       Expanded(
                         child: _buildStatCard(
                           context,
-                          'Male Remaining',
+                          AppText.maleRemaining(context),
                           maleRemaining.toString(),
                           Icons.people,
                           AppTheme.maleColor.withValues(alpha: 0.6),
@@ -208,7 +201,7 @@ class _EventStatsScreenState extends State<EventStatsScreen>
                       Expanded(
                         child: _buildStatCard(
                           context,
-                          'Female Bookings',
+                          AppText.femaleBookings(context),
                           '$femaleBookings / $femaleLimit',
                           Icons.female,
                           AppTheme.femaleColor,
@@ -218,7 +211,7 @@ class _EventStatsScreenState extends State<EventStatsScreen>
                       Expanded(
                         child: _buildStatCard(
                           context,
-                          'Female Remaining',
+                          AppText.femaleRemaining(context),
                           femaleRemaining.toString(),
                           Icons.people,
                           AppTheme.femaleColor.withValues(alpha: 0.6),
@@ -232,7 +225,7 @@ class _EventStatsScreenState extends State<EventStatsScreen>
                   // Scanned Stats
                   _buildStatCard(
                     context,
-                    'Scanned',
+                    AppText.scanned(context),
                     scannedCount.toString(),
                     Icons.qr_code_scanner,
                     Colors.green,
@@ -242,7 +235,7 @@ class _EventStatsScreenState extends State<EventStatsScreen>
 
                   // Recent Bookings
                   Text(
-                    'Recent Bookings',
+                    AppText.recentBookings(context),
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
                           fontWeight: FontWeight.bold,
                         ),
@@ -264,8 +257,13 @@ class _EventStatsScreenState extends State<EventStatsScreen>
                             ),
                             const SizedBox(height: 16),
                             Text(
-                              'No bookings yet',
+                              AppText.noBookingsYet(context),
                               style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              AppText.recentBookingsEmpty(context),
+                              style: Theme.of(context).textTheme.bodySmall,
                             ),
                           ],
                         ),
@@ -329,7 +327,7 @@ class _EventStatsScreenState extends State<EventStatsScreen>
                                 IconButton(
                                   icon: const Icon(Icons.delete_outline,
                                       size: 20),
-                                  color: Colors.red,
+                                  color: Theme.of(context).colorScheme.error,
                                   onPressed: () => _deleteTicket(booking),
                                 ),
                               ],
@@ -387,7 +385,7 @@ class _EventStatsScreenState extends State<EventStatsScreen>
               Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Text(
-                  'Tap to view all',
+                  AppText.tapToViewAll(context),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: color,
                         fontStyle: FontStyle.italic,

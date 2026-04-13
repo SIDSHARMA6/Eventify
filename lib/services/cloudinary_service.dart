@@ -10,8 +10,6 @@ class CloudinaryService {
   static const String _cloudName = 'dgfqim3jy';
   static const String _uploadPreset = 'eventify_unsigned';
 
-  void initialize() {}
-
   Future<String> uploadImage(File imageFile, String folder) async {
     final uri =
         Uri.parse('https://api.cloudinary.com/v1_1/$_cloudName/image/upload');
@@ -30,14 +28,4 @@ class CloudinaryService {
         'Cloudinary error: ${response.statusCode} - ${response.body}');
   }
 
-  Future<List<String>> uploadImages(
-      List<File> imageFiles, String folder) async {
-    final List<String> urls = [];
-    for (var file in imageFiles) {
-      try {
-        urls.add(await uploadImage(file, folder));
-      } catch (_) {}
-    }
-    return urls;
-  }
 }

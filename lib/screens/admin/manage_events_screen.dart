@@ -28,8 +28,16 @@ class _ManageEventsScreenState extends State<ManageEventsScreen>
   @override
   bool get wantKeepAlive => true;
 
+  // FIX C-04: Stream stored in initState, not recreated each build
+  late final Stream<List<Map<String, dynamic>>> _eventsStream;
   bool _isLoading = false;
   String _loadingMsg = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _eventsStream = EventService().getAllEvents();
+  }
 
   void _editEvent(Map<String, dynamic> event) async {
     await Navigator.push(
@@ -70,8 +78,9 @@ class _ManageEventsScreenState extends State<ManageEventsScreen>
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -100,8 +109,9 @@ class _ManageEventsScreenState extends State<ManageEventsScreen>
     if (confirm != true) return;
     setState(() {
       _isLoading = true;
-      _loadingMsg = 'Deleting event...';
+      _loadingMsg = AppText.deletingEvent(context);
     });
+
     try {
       await EventService().deleteEvent(event['id']);
       if (mounted) {
@@ -110,8 +120,9 @@ class _ManageEventsScreenState extends State<ManageEventsScreen>
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -122,13 +133,17 @@ class _ManageEventsScreenState extends State<ManageEventsScreen>
     final newHidden = !(event['isHidden'] ?? false);
     setState(() {
       _isLoading = true;
-      _loadingMsg = newHidden ? 'Hiding...' : 'Showing...';
+      _loadingMsg =
+          newHidden ? AppText.hiding(context) : AppText.showing(context);
     });
+
     try {
       await EventService().toggleEventVisibility(event['id'], newHidden);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(newHidden ? 'Event hidden' : 'Event shown')));
+            content: Text(newHidden
+                ? AppText.eventHidden(context)
+                : AppText.eventVisible(context))));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -138,16 +153,14 @@ class _ManageEventsScreenState extends State<ManageEventsScreen>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    context.watch<LanguageProvider>();
 
     return LoadingOverlay(
         isLoading: _isLoading,
         message: _loadingMsg,
         child: StreamBuilder<List<Map<String, dynamic>>>(
-          stream: EventService().getAllEvents(),
+          stream: _eventsStream,
           builder: (context, snapshot) {
             var events = snapshot.data ?? [];
-
             // Filter by creator email if coming from CreatorSummaryScreen
             final filter = widget.filterByEmail;
             if (filter != null) {
@@ -155,6 +168,7 @@ class _ManageEventsScreenState extends State<ManageEventsScreen>
                   events.where((e) => e['createdByEmail'] == filter).toList();
             }
 
+            // FIX C-04: Scaffold is outside StreamBuilder — only body rebuilds on stream emission
             return Scaffold(
               appBar: GradientAppBar(
                 title: Text(
@@ -238,10 +252,7 @@ class _ManageEventsScreenState extends State<ManageEventsScreen>
                                       child: Text(
                                         LanguageHelper.getEventTitle(
                                           event,
-                                          Provider.of<LanguageProvider>(context,
-                                                      listen: false)
-                                                  .currentLanguage ==
-                                              'ja',
+                                            context.watch<LanguageProvider>().currentLanguage == 'ja',
                                         ),
                                         style: TextStyle(
                                           decoration: isHidden
@@ -256,15 +267,15 @@ class _ManageEventsScreenState extends State<ManageEventsScreen>
                                     const SizedBox(width: 8),
                                     // Status badges
                                     if (isHidden)
-                                      const StatusBadge(
-                                          label: 'HIDDEN', color: Colors.orange)
+                                      StatusBadge(
+                                          label: AppText.statusHidden(context), color: Colors.orange)
                                     else if (event['isDuplicated'] == true)
-                                      const StatusBadge(
-                                          label: 'DUPLICATED',
+                                      StatusBadge(
+                                          label: AppText.statusDuplicated(context),
                                           color: Colors.blue)
                                     else
-                                      const StatusBadge(
-                                          label: 'ACTIVE', color: Colors.green),
+                                      StatusBadge(
+                                          label: AppText.statusActive(context), color: Colors.green),
                                   ],
                                 ),
                                 subtitle: Column(
@@ -282,14 +293,14 @@ class _ManageEventsScreenState extends State<ManageEventsScreen>
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                     Text(
-                                      '📍 ${Provider.of<LanguageProvider>(context, listen: false).currentLanguage == 'en' ? event['location_en'] : event['location_ja']}',
+                                       '📍 ${context.watch<LanguageProvider>().currentLanguage == 'en' ? event['location_en'] : event['location_ja']}',
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                     if (event['venueAddress_en'] != null ||
                                         event['venueAddress_ja'] != null)
                                       Text(
-                                        '🏢 ${Provider.of<LanguageProvider>(context, listen: false).currentLanguage == 'en' ? (event['venueAddress_en'] ?? '') : (event['venueAddress_ja'] ?? '')}',
+                                        '🏢 ${context.watch<LanguageProvider>().currentLanguage == 'en' ? (event['venueAddress_en'] ?? '') : (event['venueAddress_ja'] ?? '')}',
                                         style: TextStyle(
                                           fontSize: 12,
                                           color: Theme.of(context)
@@ -353,10 +364,9 @@ class _ManageEventsScreenState extends State<ManageEventsScreen>
                                       itemBuilder: (context) => [
                                         // Edit
                                         PopupMenuItem(
-                                          onTap: () => Future.delayed(
-                                            Duration.zero,
-                                            () => _editEvent(event),
-                                          ),
+                                          onTap: () => WidgetsBinding.instance
+                                              .addPostFrameCallback(
+                                                  (_) => _editEvent(event)),
                                           child: Row(
                                             children: [
                                               const Icon(Icons.edit, size: 20),
@@ -393,10 +403,9 @@ class _ManageEventsScreenState extends State<ManageEventsScreen>
                                         ),
                                         // Hide/Show
                                         PopupMenuItem(
-                                          onTap: () => Future.delayed(
-                                            Duration.zero,
-                                            () => _toggleVisibility(event),
-                                          ),
+                                          onTap: () => WidgetsBinding.instance
+                                              .addPostFrameCallback((_) =>
+                                                  _toggleVisibility(event)),
                                           child: Row(
                                             children: [
                                               Icon(
@@ -414,10 +423,9 @@ class _ManageEventsScreenState extends State<ManageEventsScreen>
                                         ),
                                         // Duplicate
                                         PopupMenuItem(
-                                          onTap: () => Future.delayed(
-                                            Duration.zero,
-                                            () => _duplicateEvent(event),
-                                          ),
+                                          onTap: () => WidgetsBinding.instance
+                                              .addPostFrameCallback((_) =>
+                                                  _duplicateEvent(event)),
                                           child: Row(
                                             children: [
                                               const Icon(Icons.copy, size: 20),
@@ -428,10 +436,9 @@ class _ManageEventsScreenState extends State<ManageEventsScreen>
                                         ),
                                         // Delete
                                         PopupMenuItem(
-                                          onTap: () => Future.delayed(
-                                            Duration.zero,
-                                            () => _deleteEvent(event),
-                                          ),
+                                          onTap: () => WidgetsBinding.instance
+                                              .addPostFrameCallback(
+                                                  (_) => _deleteEvent(event)),
                                           child: Row(
                                             children: [
                                               Icon(Icons.delete,

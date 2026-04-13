@@ -1,3 +1,4 @@
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -17,25 +18,22 @@ class ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Watch language provider to rebuild when language changes
     context.watch<LanguageProvider>();
-
+    final isEn = context.read<LanguageProvider>().currentLanguage == 'en';
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
     return Scaffold(
       appBar: GradientAppBar(
-        title: Text(
-          AppText.profile(context),
-          style: const TextStyle(color: Colors.white),
-        ),
+        title: Text(AppText.profile(context),
+            style: const TextStyle(color: Colors.white)),
       ),
       body: ListView(
         physics: const BouncingScrollPhysics(),
         children: [
           const SizedBox(height: 16),
 
-          // Language Selection
+          // 1. Language
           Consumer<LanguageProvider>(
             builder: (context, langProvider, child) => ListTile(
               leading: const GradientIcon(icon: Icons.language),
@@ -45,24 +43,18 @@ class ProfileScreen extends StatelessWidget {
                 underline: const SizedBox(),
                 items: [
                   DropdownMenuItem(
-                    value: 'en',
-                    child: Text(AppText.english(context)),
-                  ),
+                      value: 'en', child: Text(AppText.english(context))),
                   DropdownMenuItem(
-                    value: 'ja',
-                    child: Text(AppText.japanese(context)),
-                  ),
+                      value: 'ja', child: Text(AppText.japanese(context))),
                 ],
                 onChanged: (value) {
-                  if (value != null) {
-                    langProvider.switchLanguage(value);
-                  }
+                  if (value != null) langProvider.switchLanguage(value);
                 },
               ),
             ),
           ),
 
-          // Theme Toggle
+          // 2. Theme
           Consumer<ThemeProvider>(
             builder: (context, themeProvider, child) => SwitchListTile(
               secondary: GradientIcon(
@@ -77,51 +69,29 @@ class ProfileScreen extends StatelessWidget {
                     : AppText.lightMode(context),
               ),
               value: themeProvider.isDarkMode,
-              onChanged: (value) {
-                themeProvider.toggleTheme();
-              },
+              onChanged: (value) => themeProvider.toggleTheme(),
             ),
           ),
 
           const Divider(),
 
-          // Login with Creator
+          // 3. Login with Creator
           ListTile(
             leading: const GradientIcon(icon: Icons.person_outline),
             title: Text(
               AppText.loginWithCreator(context),
               style: TextStyle(
-                color: colorScheme.primary,
-                fontWeight: FontWeight.w600,
-              ),
+                  color: colorScheme.primary, fontWeight: FontWeight.w600),
             ),
             trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-            onTap: () {
-              AppRoutes.navigateTo(context, AppRoutes.creatorLogin);
-            },
+            onTap: () => AppRoutes.navigateTo(context, AppRoutes.creatorLogin),
           ),
 
-          const Divider(),
-
-          // About App
-          ListTile(
-            leading: const GradientIcon(icon: Icons.info_outline),
-            title: Text(AppText.aboutApp(context)),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-            onTap: () {
-              AppRoutes.navigateTo(context, AppRoutes.aboutApp);
-            },
-          ),
-
-          // Event Collaboration Request
+          // 4. Event Collaboration Request
           ListTile(
             leading: const GradientIcon(icon: Icons.handshake_outlined),
             title: Text(
-              Provider.of<LanguageProvider>(context, listen: false)
-                          .currentLanguage ==
-                      'en'
-                  ? 'Event Collaboration Request'
-                  : 'イベントコラボレーション依頼',
+              AppText.eventCollaboration(context),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
@@ -140,97 +110,79 @@ class ProfileScreen extends StatelessWidget {
             },
           ),
 
-          // Privacy Policy
-          ListTile(
-            leading: const GradientIcon(icon: Icons.privacy_tip_outlined),
-            title: Text(AppText.privacyPolicy(context)),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-            onTap: () {
-              AppRoutes.navigateTo(context, AppRoutes.privacyPolicy);
-            },
-          ),
-
-          // FAQ
-          ListTile(
-            leading: const GradientIcon(icon: Icons.help_outline),
-            title: Text(
-              Provider.of<LanguageProvider>(context, listen: false)
-                          .currentLanguage ==
-                      'en'
-                  ? 'FAQ'
-                  : 'よくある質問',
-            ),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-            onTap: () {
-              Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const FaqScreen()));
-            },
-          ),
-
-          // Contact Us
+          // 5. Contact Us
           ListTile(
             leading: const GradientIcon(icon: Icons.email_outlined),
             title: Text(AppText.contactUs(context)),
             trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-            onTap: () {
-              _showContactDialog(context);
-            },
+            onTap: () => _showContactDialog(context),
           ),
 
-          // Commercial Disclosure
+          // 6. About App
           ListTile(
-            leading: const GradientIcon(icon: Icons.business_outlined),
-            title: Text(
-              Provider.of<LanguageProvider>(context, listen: false)
-                          .currentLanguage ==
-                      'en'
-                  ? 'Commercial Disclosure'
-                  : '特定商取引法に基づく表記',
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
+            leading: const GradientIcon(icon: Icons.info_outline),
+            title: Text(AppText.aboutApp(context)),
             trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const CommercialDisclosureScreen(),
-                ),
-              );
-            },
+            onTap: () => AppRoutes.navigateTo(context, AppRoutes.aboutApp),
           ),
 
-          // Cancellation Policy
+          // 7. FAQ
           ListTile(
-            leading: const GradientIcon(icon: Icons.cancel_outlined),
-            title: Text(
-              Provider.of<LanguageProvider>(context, listen: false)
-                          .currentLanguage ==
-                      'en'
-                  ? 'Cancellation Policy'
-                  : 'キャンセルポリシー',
-            ),
+            leading: const GradientIcon(icon: Icons.help_outline),
+            title: Text(AppText.faq(context)),
             trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const CancellationPolicyScreen(),
-                ),
-              );
-            },
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const FaqScreen()),
+            ),
           ),
 
           const Divider(),
 
-          // Version
+          // 8. Privacy Policy
+          ListTile(
+            leading: const GradientIcon(icon: Icons.privacy_tip_outlined),
+            title: Text(AppText.privacyPolicy(context)),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () => AppRoutes.navigateTo(context, AppRoutes.privacyPolicy),
+          ),
+
+          // 9. Commercial Disclosure
+          ListTile(
+            leading: const GradientIcon(icon: Icons.business_outlined),
+            title: Text(
+              isEn ? 'Commercial Disclosure' : '特定商取引法に基づく表記',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => const CommercialDisclosureScreen()),
+            ),
+          ),
+
+          // 10. Cancellation Policy
+          ListTile(
+            leading: const GradientIcon(icon: Icons.cancel_outlined),
+            title: Text(AppText.cancellationPolicy(context)),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => const CancellationPolicyScreen()),
+            ),
+          ),
+
+          const Divider(),
+
+          // 11. Version
           ListTile(
             leading: const GradientIcon(icon: Icons.info),
             title: Text(AppText.version(context)),
-            trailing: Text(
-              AppConstants.appVersion,
-              style: theme.textTheme.bodySmall,
-            ),
+            trailing:
+                Text(AppConstants.appVersion, style: theme.textTheme.bodySmall),
           ),
 
           const SizedBox(height: 16),
@@ -252,30 +204,19 @@ class ProfileScreen extends StatelessWidget {
               leading: const SizedBox(
                 width: 34,
                 height: 34,
-                child: GradientIcon(
-                  icon: Icons.email,
-                  size: 38,
-                ),
+                child: GradientIcon(icon: Icons.email, size: 38),
               ),
               title: Text(AppText.email(context)),
               subtitle: const Text(AppConstants.contactEmail),
               onTap: () async {
-                final url = Uri(
-                  scheme: 'mailto',
-                  path: AppConstants.contactEmail,
-                );
+                final url =
+                    Uri(scheme: 'mailto', path: AppConstants.contactEmail);
                 try {
-                  await launchUrl(
-                    url,
-                    mode: LaunchMode.externalApplication,
-                  );
+                  await launchUrl(url, mode: LaunchMode.externalApplication);
                 } catch (_) {
                   if (context.mounted) {
-                    AppRoutes.showSnackBar(
-                      context,
-                      AppText.noEmailApp(context),
-                      isError: true,
-                    );
+                    AppRoutes.showSnackBar(context, AppText.noEmailApp(context),
+                        isError: true);
                   }
                 }
               },
@@ -290,9 +231,8 @@ class ProfileScreen extends StatelessWidget {
                   width: 30,
                   height: 30,
                   fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return const GradientIcon(icon: Icons.chat);
-                  },
+                  errorBuilder: (_, __, ___) =>
+                      const GradientIcon(icon: Icons.chat),
                 ),
               ),
               title: Text(AppText.line(context)),
@@ -300,17 +240,35 @@ class ProfileScreen extends StatelessWidget {
               onTap: () async {
                 final url = Uri.parse(AppConstants.contactLineUrl);
                 try {
-                  await launchUrl(
-                    url,
-                    mode: LaunchMode.externalApplication,
-                  );
+                  await launchUrl(url, mode: LaunchMode.externalApplication);
                 } catch (_) {
                   if (context.mounted) {
                     AppRoutes.showSnackBar(
-                      context,
-                      AppText.lineAppNotFound(context),
-                      isError: true,
-                    );
+                        context, AppText.lineAppNotFound(context),
+                        isError: true);
+                  }
+                }
+              },
+            ),
+            const SizedBox(height: 8),
+            // WhatsApp
+            ListTile(
+              leading: SvgPicture.asset(
+                'assets/whatsapp-svgrepo-com.svg',
+                width: 30,
+                height: 30,
+              ),
+              title: Text(AppText.whatsapp(context)),
+              subtitle: Text(AppText.openWhatsapp(context)),
+              onTap: () async {
+                final url = Uri.parse(AppConstants.contactWhatsappUrl);
+                try {
+                  await launchUrl(url, mode: LaunchMode.externalApplication);
+                } catch (_) {
+                  if (context.mounted) {
+                    AppRoutes.showSnackBar(
+                        context, AppText.whatsappAppNotFound(context),
+                        isError: true);
                   }
                 }
               },

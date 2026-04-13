@@ -19,11 +19,30 @@ class App extends StatefulWidget {
   State<App> createState() => _AppState();
 }
 
-class _AppState extends State<App> with AutomaticKeepAliveClientMixin {
-  @override
-  bool get wantKeepAlive => true;
-
+class _AppState extends State<App> with WidgetsBindingObserver {
   int _currentIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // FIX-020: Update last_activity on resume so 24h timeout tracks inactivity
+      try {
+        Provider.of<AuthProvider>(context, listen: false).updateActivity();
+      } catch (_) {}
+    }
+  }
 
   final List<Widget> _screens = const [
     HomeScreen(),
@@ -33,8 +52,6 @@ class _AppState extends State<App> with AutomaticKeepAliveClientMixin {
 
   @override
   Widget build(BuildContext context) {
-    super.build(context);
-
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
@@ -88,20 +105,23 @@ class EventifyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => AuthProvider()),
       ],
-      child: Consumer2<ThemeProvider, LanguageProvider>(
-        builder: (context, themeProvider, _, __) {
-          return MaterialApp(
-            navigatorKey: navigatorKey,
-            title: 'Best Evento',
-            debugShowCheckedModeBanner: false,
-            theme: AppTheme.lightTheme,
-            darkTheme: AppTheme.darkTheme,
-            themeMode:
-                themeProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
-            initialRoute: AppRoutes.home,
-            routes: AppRoutes.getRoutes(),
-          );
-        },
+      child: Consumer<ThemeProvider>(
+        builder: (context, themeProvider, __) => Consumer<LanguageProvider>(
+          builder: (context, languageProvider, __) {
+            return MaterialApp(
+              navigatorKey: navigatorKey,
+              title: 'Best Evento',
+              debugShowCheckedModeBanner: false,
+              theme: AppTheme.lightTheme,
+              darkTheme: AppTheme.darkTheme,
+              themeMode:
+                  themeProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
+              locale: Locale(languageProvider.currentLanguage),
+              initialRoute: AppRoutes.home,
+              routes: AppRoutes.getRoutes(),
+            );
+          },
+        ),
       ),
     );
   }

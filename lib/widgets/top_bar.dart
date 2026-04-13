@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/language_provider.dart';
 import '../config/constants.dart';
 import '../services/location_management_service.dart';
+import '../utils/app_text.dart';
 import 'gradient_app_bar.dart';
 
 class TopBar extends StatefulWidget implements PreferredSizeWidget {
@@ -34,6 +35,15 @@ class _TopBarState extends State<TopBar> {
   }
 
   @override
+  void didUpdateWidget(TopBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if ((widget.selectedLocation != null && widget.onLocationChanged != null) &&
+        (oldWidget.selectedLocation == null || oldWidget.onLocationChanged == null)) {
+      _locationsStream = LocationManagementService().getAllLocations();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return GradientAppBar(
       title: Text(
@@ -55,14 +65,25 @@ class _TopBarState extends State<TopBar> {
                   return PopupMenuButton<String>(
                     icon: const Icon(Icons.location_on, color: Colors.white),
                     onSelected: widget.onLocationChanged!,
-                    itemBuilder: (context) => locations.map((loc) {
-                      final nameEn = loc['name_en'] as String? ?? '';
-                      final nameJa = loc['name_ja'] as String? ?? nameEn;
-                      return PopupMenuItem<String>(
-                        value: nameEn,
-                        child: Text(isJapanese ? nameJa : nameEn),
-                      );
-                    }).toList(),
+                    itemBuilder: (context) => [
+                      // FIX-031/DEAD-02: 'All' option lets users reset location filter
+                      PopupMenuItem<String>(
+                        value: 'All',
+                        child: Text(AppText.allFilter(context)),
+                      ),
+                      ...locations
+                          .where((loc) =>
+                              (loc['name_en'] as String? ?? '').trim().toLowerCase() !=
+                              'all')
+                          .map((loc) {
+                        final nameEn = loc['name_en'] as String? ?? '';
+                        final nameJa = loc['name_ja'] as String? ?? nameEn;
+                        return PopupMenuItem<String>(
+                          value: nameEn,
+                          child: Text(isJapanese ? nameJa : nameEn),
+                        );
+                      }),
+                    ],
                   );
                 },
               );
@@ -77,10 +98,6 @@ class _TopBarState extends State<TopBar> {
               PopupMenuItem<String>(value: 'ja', child: Text('日本語')),
             ],
           ),
-        ),
-        IconButton(
-          icon: const Icon(Icons.notifications_outlined, color: Colors.white),
-          onPressed: () {},
         ),
       ],
     );

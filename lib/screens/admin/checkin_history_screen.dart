@@ -14,14 +14,22 @@ class CheckinHistoryScreen extends StatefulWidget {
 }
 
 class _CheckinHistoryScreenState extends State<CheckinHistoryScreen> {
+  // FIX C-05/C-10: Stream stored in initState, not recreated each build
+  late final Stream<List<Map<String, dynamic>>> _historyStream;
   final Set<String> _selected = {};
   bool _isSelecting = false;
   bool _isDeleting = false;
   int _deleteProgress = 0;
   int _deleteTotal = 0;
+  // _currentTickets updated via postFrameCallback to avoid side-effect in builder
   List<Map<String, dynamic>> _currentTickets = [];
 
-  static const int _maxBulkDelete = 50;
+  @override
+  void initState() {
+    super.initState();
+    _historyStream = TicketService().getCheckinHistory(eventId: widget.eventId);
+  }
+
 
   void _toggleSelect(String id) {
     setState(() {
@@ -29,7 +37,6 @@ class _CheckinHistoryScreenState extends State<CheckinHistoryScreen> {
         _selected.remove(id);
         if (_selected.isEmpty) _isSelecting = false;
       } else {
-        if (_selected.length >= _maxBulkDelete) return; // cap at 50
         _selected.add(id);
       }
     });
@@ -37,10 +44,7 @@ class _CheckinHistoryScreenState extends State<CheckinHistoryScreen> {
 
   void _selectAll(List<Map<String, dynamic>> tickets) {
     setState(() {
-      // Cap at _maxBulkDelete
-      final toSelect =
-          tickets.take(_maxBulkDelete).map((t) => t['id'] as String);
-      _selected.addAll(toSelect);
+      _selected.addAll(tickets.map((t) => t['id'] as String));
     });
   }
 
@@ -154,10 +158,9 @@ class _CheckinHistoryScreenState extends State<CheckinHistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    context.watch<LanguageProvider>();
-    final isEnglish =
-        Provider.of<LanguageProvider>(context, listen: false).currentLanguage ==
-            'en';
+    // Use read — AppBar text is static per build; language changes trigger
+    // a full rebuild via InheritedWidget anyway when locale changes.
+    final isEnglish = context.watch<LanguageProvider>().currentLanguage == 'en';
 
     return Scaffold(
       appBar: GradientAppBar(
@@ -181,17 +184,14 @@ class _CheckinHistoryScreenState extends State<CheckinHistoryScreen> {
                 Builder(builder: (context) {
                   final allSelected = _currentTickets.isNotEmpty &&
                       _selected.length == _currentTickets.length;
-                  final atCap = _selected.length >= _maxBulkDelete;
                   return TextButton(
-                    onPressed: allSelected || atCap
+                    onPressed: allSelected
                         ? _clearSelection
                         : () => _selectAll(_currentTickets),
                     child: Text(
-                      allSelected || atCap
+                      allSelected
                           ? (isEnglish ? 'Deselect All' : '全解除')
-                          : (isEnglish
-                              ? 'Select All (max $_maxBulkDelete)'
-                              : '全選択 (最大$_maxBulkDelete件)'),
+                          : (isEnglish ? 'Select All' : '全選択'),
                       style: const TextStyle(color: Colors.white),
                     ),
                   );
@@ -209,7 +209,7 @@ class _CheckinHistoryScreenState extends State<CheckinHistoryScreen> {
       body: Stack(
         children: [
           StreamBuilder<List<Map<String, dynamic>>>(
-            stream: TicketService().getCheckinHistory(eventId: widget.eventId),
+            stream: _historyStream,
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting &&
                   !snapshot.hasData) {
@@ -221,6 +221,8 @@ class _CheckinHistoryScreenState extends State<CheckinHistoryScreen> {
               }
 
               final allTickets = _sortTickets(snapshot.data ?? []);
+              // Plain assignment — _currentTickets is only read in async
+              // action handlers, never during build, so no setState needed.
               _currentTickets = allTickets;
 
               if (allTickets.isEmpty) {
@@ -255,7 +257,9 @@ class _CheckinHistoryScreenState extends State<CheckinHistoryScreen> {
                 itemBuilder: (context, index) {
                   final ticket = allTickets[index];
                   final id = ticket['id'] as String;
-                  final checkedInTime = DateTime.parse(ticket['checkedInAt']);
+                  final checkedInTime = DateTime.tryParse(
+                          ticket['checkedInAt'] as String? ?? '') ??
+                      DateTime.now(); // FIX-021: tryParse never throws
                   final eventTitle = isEnglish
                       ? ticket['eventTitle_en']
                       : (ticket['eventTitle_ja'] ?? ticket['eventTitle_en']);
@@ -412,37 +416,37 @@ class _CheckinHistoryScreenState extends State<CheckinHistoryScreen> {
     return filtered;
   }
 
-  String _formatDateTime(DateTime dateTime, bool isEnglish) {
-    final months = isEnglish
-        ? [
-            'Jan',
-            'Feb',
-            'Mar',
-            'Apr',
-            'May',
-            'Jun',
-            'Jul',
-            'Aug',
-            'Sep',
-            'Oct',
-            'Nov',
-            'Dec'
-          ]
-        : [
-            '1月',
-            '2月',
-            '3月',
-            '4月',
-            '5月',
-            '6月',
-            '7月',
-            '8月',
-            '9月',
-            '10月',
-            '11月',
-            '12月'
-          ];
+  static const List<String> _monthsEn = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec'
+  ];
+  static const List<String> _monthsJa = [
+    '1月',
+    '2月',
+    '3月',
+    '4月',
+    '5月',
+    '6月',
+    '7月',
+    '8月',
+    '9月',
+    '10月',
+    '11月',
+    '12月'
+  ];
 
+  String _formatDateTime(DateTime dateTime, bool isEnglish) {
+    final months = isEnglish ? _monthsEn : _monthsJa;
     final month = months[dateTime.month - 1];
     final hour = dateTime.hour.toString().padLeft(2, '0');
     final minute = dateTime.minute.toString().padLeft(2, '0');

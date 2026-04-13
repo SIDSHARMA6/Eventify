@@ -22,7 +22,8 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> _load() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await SharedPreferences.getInstance()
+          .timeout(const Duration(seconds: 5));
       final uid = prefs.getString('user_id');
 
       if (uid == null) {
@@ -67,7 +68,8 @@ class AuthProvider extends ChangeNotifier {
       final doc = await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
-          .get();
+          .get()
+          .timeout(const Duration(seconds: 10));
       final role = doc.data()?['role'] as String?;
       if (!doc.exists || !['admin', 'creator'].contains(role)) {
         await _clearSession(prefs);
@@ -78,8 +80,11 @@ class AuthProvider extends ChangeNotifier {
         await prefs.setString('user_role', _userRole!);
         notifyListeners();
       }
+    } on FirebaseAuthException {
+      // Auth token invalid — force logout
+      await _clearSession(prefs);
     } catch (_) {
-      // Network error — keep existing session, don't log out
+      // Network error — keep existing session, will revalidate next launch
     }
   }
 
@@ -131,9 +136,8 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> _clearSession(SharedPreferences prefs) async {
-    for (final key in ['user_id', 'user_email', 'user_role', 'last_activity']) {
-      await prefs.remove(key);
-    }
+    await Future.wait(['user_id', 'user_email', 'user_role', 'last_activity']
+        .map((k) => prefs.remove(k)));
     _userId = _userEmail = _userRole = null;
     notifyListeners();
   }

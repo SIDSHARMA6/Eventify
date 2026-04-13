@@ -8,9 +8,7 @@ class CancellationPolicyScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isJa =
-        Provider.of<LanguageProvider>(context, listen: false).currentLanguage ==
-            'ja';
+    final isJa = context.watch<LanguageProvider>().currentLanguage == 'ja';
     return WebViewScreen(
       url: 'https://officialbestevent.wixsite.com/bestevento/blank-1',
       titleEn: 'Cancellation Policy',

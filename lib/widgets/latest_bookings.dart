@@ -23,14 +23,12 @@ class _LatestBookingsState extends State<LatestBookings> {
 
   @override
   Widget build(BuildContext context) {
-    context.watch<LanguageProvider>();
-    final isJa =
-        Provider.of<LanguageProvider>(context, listen: false).currentLanguage ==
-            'ja';
-
     return StreamBuilder<List<Map<String, dynamic>>>(
       stream: _stream,
       builder: (context, snapshot) {
+        // Read language inside builder — language changes only rebuild this subtree,
+        // not the outer widget which would re-subscribe to the stream.
+        final isJa = context.watch<LanguageProvider>().currentLanguage == 'ja';
         final bookings = snapshot.data ?? [];
         if (bookings.isEmpty) return const SizedBox.shrink();
 

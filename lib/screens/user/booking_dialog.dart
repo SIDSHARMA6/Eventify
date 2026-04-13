@@ -33,6 +33,17 @@ class _BookingDialogState extends State<BookingDialog> {
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     final errorColor = Theme.of(context).colorScheme.error;
 
+    // FIX L-10: check isHidden before async call — give immediate UX feedback
+    if (widget.event['isHidden'] == true) {
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: const Text('This event is no longer available for booking.'),
+          backgroundColor: errorColor,
+        ),
+      );
+      return;
+    }
+
     final bookingSuccessText = AppText.bookingSuccess(context);
 
     // Validate name using centralized validator
@@ -78,7 +89,7 @@ class _BookingDialogState extends State<BookingDialog> {
 
   @override
   Widget build(BuildContext context) {
-    context.watch<LanguageProvider>(); // rebuild when language changes
+    context.read<LanguageProvider>();
     return Dialog(
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),

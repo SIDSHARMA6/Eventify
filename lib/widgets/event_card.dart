@@ -14,10 +14,9 @@ class EventCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    context.watch<LanguageProvider>();
+    // FIX-005/SX-03: Single watch — subscribes AND reads, no redundant Provider.of
     final isJapanese =
-        Provider.of<LanguageProvider>(context, listen: false).currentLanguage ==
-            'ja';
+        context.watch<LanguageProvider>().currentLanguage == 'ja';
     final title = LanguageHelper.getEventTitle(event, isJapanese);
     final images = LanguageHelper.getImages(event, isJapanese);
 
@@ -27,7 +26,7 @@ class EventCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ImageCarousel(images: images, event: event),
+          ImageCarousel(images: images, event: event, isJapanese: isJapanese),
           InkWell(
             onTap: onTap,
             borderRadius:

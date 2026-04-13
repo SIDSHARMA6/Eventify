@@ -3,26 +3,33 @@ import '../../widgets/gradient_app_bar.dart';
 import '../../services/event_service.dart';
 import 'manage_events_screen.dart';
 
-/// Admin screen showing a table of all creators and their event/ticket stats.
-/// Groups events by createdByEmail — no extra user collection queries needed.
-class CreatorSummaryScreen extends StatelessWidget {
+// FIX C-02: Converted to StatefulWidget — stream stored in initState, not recreated each build
+class CreatorSummaryScreen extends StatefulWidget {
   const CreatorSummaryScreen({super.key});
+
+  @override
+  State<CreatorSummaryScreen> createState() => _CreatorSummaryScreenState();
+}
+
+class _CreatorSummaryScreenState extends State<CreatorSummaryScreen> {
+  late final Stream<List<Map<String, dynamic>>> _eventsStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _eventsStream = EventService().getAllEvents();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: GradientAppBar(
-        title: const Text(
-          'Creators Overview',
-          style: TextStyle(color: Colors.white),
-        ),
+        title: const Text('Creators Overview',
+            style: TextStyle(color: Colors.white)),
       ),
       body: StreamBuilder<List<Map<String, dynamic>>>(
-        stream: EventService().getAllEvents(),
+        stream: _eventsStream,
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
           if (snapshot.hasError) {
             return Center(child: Text('Error: ${snapshot.error}'));
           }
@@ -226,7 +233,7 @@ class _StatChip extends StatelessWidget {
     return Chip(
       avatar: Icon(icon, size: 16, color: color),
       label: Text(label, style: TextStyle(fontSize: 12, color: color)),
-      backgroundColor: color.withAlpha(25),
+      backgroundColor: color.withValues(alpha: 0.1),
       padding: EdgeInsets.zero,
     );
   }

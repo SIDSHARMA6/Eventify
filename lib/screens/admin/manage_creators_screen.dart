@@ -21,30 +21,42 @@ class _ManageCreatorsScreenState extends State<ManageCreatorsScreen>
   bool get wantKeepAlive => true;
 
   final _userService = UserManagementService();
+  late final Stream<List<Map<String, dynamic>>> _creatorsStream;
   bool _isDeleting = false;
 
+  @override
+  void initState() {
+    super.initState();
+    _creatorsStream = _userService.getAllCreators();
+  }
+
   Future<void> _deleteCreator(Map<String, dynamic> creator) async {
+    final isJa = context.read<LanguageProvider>().currentLanguage == 'ja';
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Creator'),
-        content: Text(
-          'Delete ${creator['email']}?\n\nThis will also delete all their events and tickets. This action cannot be undone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(AppText.cancel(context)),
+      builder: (context) {
+        return AlertDialog(
+          title: Text(AppText.deleteCreator(context)),
+          content: Text(
+            isJa
+                ? '${creator['email']}を削除しますか？\n\nすべてのイベントとチケットも削除され、元に戻せません。'
+                : 'Delete ${creator['email']}?\n\nThis will also delete all their events and tickets. This action cannot be undone.',
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(
-              foregroundColor: Theme.of(context).colorScheme.error,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(AppText.cancel(context)),
             ),
-            child: Text(AppText.delete(context)),
-          ),
-        ],
-      ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.error,
+              ),
+              child: Text(AppText.delete(context)),
+            ),
+          ],
+        );
+      },
     );
 
     if (confirm != true) return;
@@ -53,10 +65,8 @@ class _ManageCreatorsScreenState extends State<ManageCreatorsScreen>
 
     try {
       // 1. Get all events by this creator and delete them (cascade deletes tickets)
-      final events =
-          await EventService().getEventsByCreator(creator['id']).first;
+      final events = await EventService().getEventsByCreatorOnce(creator['id']);
       for (final event in events) {
-        // deleteEvent now automatically deletes all tickets (including scanned)
         await EventService().deleteEvent(event['id']);
       }
 
@@ -87,11 +97,9 @@ class _ManageCreatorsScreenState extends State<ManageCreatorsScreen>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    context.watch<LanguageProvider>();
-
     return LoadingOverlay(
       isLoading: _isDeleting,
-      message: 'Deleting creator...',
+      message: AppText.deletingCreator(context),
       child: Scaffold(
         appBar: GradientAppBar(
           title: Text(
@@ -100,11 +108,9 @@ class _ManageCreatorsScreenState extends State<ManageCreatorsScreen>
           ),
         ),
         body: StreamBuilder<List<Map<String, dynamic>>>(
-          stream: _userService.getAllCreators(),
+          stream: _creatorsStream,
           builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
+            context.watch<LanguageProvider>();
 
             if (snapshot.hasError) {
               return Center(
@@ -131,7 +137,7 @@ class _ManageCreatorsScreenState extends State<ManageCreatorsScreen>
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Creators must be added from Firebase Console',
+                      AppText.creatorsMustBeAddedFromConsole(context),
                       style: Theme.of(context).textTheme.bodyMedium,
                       textAlign: TextAlign.center,
                     ),

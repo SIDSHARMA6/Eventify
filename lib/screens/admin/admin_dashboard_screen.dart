@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/language_provider.dart';
 import '../../utils/app_text.dart';
 import '../../config/theme.dart';
 import '../../config/admin_routes.dart';
@@ -13,8 +14,24 @@ import 'manage_locations_screen.dart';
 import 'qr_scanner_screen.dart';
 import '../creator/create_event_screen.dart';
 
-class AdminDashboardScreen extends StatelessWidget {
+// FIX C-01: Converted to StatefulWidget — streams stored in initState, not recreated each build
+class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
+
+  @override
+  State<AdminDashboardScreen> createState() => _AdminDashboardScreenState();
+}
+
+class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+  late final Stream<List<Map<String, dynamic>>> _eventsStream;
+  late final Future<int> _ticketsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _eventsStream = EventService().getAllEvents();
+    _ticketsFuture = TicketService().getTotalActiveCount();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -37,100 +54,104 @@ class AdminDashboardScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: ListView(
-        physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.all(16),
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: StreamBuilder<List<Map<String, dynamic>>>(
-                  stream: EventService().getAllEvents(),
-                  builder: (context, snap) => _statCard(
-                    context,
-                    AppText.totalEvents(context),
-                    '${snap.data?.length ?? 0}',
-                    Icons.event,
-                    Theme.of(context).colorScheme.primary,
+      body: Consumer<LanguageProvider>(
+        builder: (context, _, __) => ListView(
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.all(16),
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: StreamBuilder<List<Map<String, dynamic>>>(
+                    stream: _eventsStream,
+                    builder: (context, snap) => _statCard(
+                      context,
+                      AppText.totalEvents(context),
+                      '${snap.data?.length ?? 0}',
+                      Icons.event,
+                      Theme.of(context).colorScheme.primary,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: StreamBuilder<int>(
-                  stream: TicketService().getTotalActiveCount(),
-                  builder: (context, snap) => _statCard(
-                    context,
-                    AppText.totalTickets(context),
-                    '${snap.data ?? 0}',
-                    Icons.confirmation_number,
-                    AppTheme.successColor,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FutureBuilder<int>(
+                    future: _ticketsFuture,
+                    builder: (context, snap) => _statCard(
+                      context,
+                      AppText.totalTickets(context),
+                      '${snap.data ?? 0}',
+                      Icons.confirmation_number,
+                      AppTheme.successColor,
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          Text(AppText.quickActions(context),
-              style: Theme.of(context)
-                  .textTheme
-                  .titleLarge
-                  ?.copyWith(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 16),
-          _tile(
-            context,
-            icon: Icons.add_circle,
-            color: AppTheme.successColor,
-            title: AppText.createEvent(context),
-            subtitle: AppText.createNewEvent(context),
-            onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (_) =>
-                        const CreateEventScreen(creatorId: 'admin'))),
-          ),
-          _tile(
-            context,
-            icon: Icons.qr_code_scanner,
-            color: Colors.purple,
-            title: AppText.scanTicketQR(context),
-            subtitle: AppText.checkInAttendees(context),
-            onTap: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const QRScannerScreen())),
-          ),
-          _tile(
-            context,
-            icon: Icons.event,
-            color: Theme.of(context).primaryColor,
-            title: AppText.manageEvents(context),
-            subtitle: AppText.manageEvents(context),
-            onTap: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const ManageEventsScreen())),
-          ),
-          _tile(
-            context,
-            icon: Icons.people,
-            color: Theme.of(context).primaryColor,
-            title: AppText.manageCreators(context),
-            subtitle: AppText.manageEventCreators(context),
-            onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (_) => const ManageCreatorsScreen())),
-          ),
-          _tile(
-            context,
-            icon: Icons.location_on,
-            color: Theme.of(context).primaryColor,
-            title: AppText.manageLocations(context),
-            subtitle: AppText.manageLocations(context),
-            onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (_) => const ManageLocationsScreen())),
-          ),
-        ],
-      ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            Text(AppText.quickActions(context),
+                style: Theme.of(context)
+                    .textTheme
+                    .titleLarge
+                    ?.copyWith(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+            _tile(
+              context,
+              icon: Icons.add_circle,
+              color: AppTheme.successColor,
+              title: AppText.createEvent(context),
+              subtitle: AppText.createNewEvent(context),
+              onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) =>
+                          const CreateEventScreen(creatorId: 'admin'))),
+            ),
+            _tile(
+              context,
+              icon: Icons.qr_code_scanner,
+              color: Colors.purple,
+              title: AppText.scanTicketQR(context),
+              subtitle: AppText.checkInAttendees(context),
+              onTap: () => Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const QRScannerScreen())),
+            ),
+            _tile(
+              context,
+              icon: Icons.event,
+              color: Theme.of(context).primaryColor,
+              title: AppText.manageEvents(context),
+              subtitle: AppText.manageEvents(context),
+              onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => const ManageEventsScreen())),
+            ),
+            _tile(
+              context,
+              icon: Icons.people,
+              color: Theme.of(context).primaryColor,
+              title: AppText.manageCreators(context),
+              subtitle: AppText.manageEventCreators(context),
+              onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => const ManageCreatorsScreen())),
+            ),
+            _tile(
+              context,
+              icon: Icons.location_on,
+              color: Theme.of(context).primaryColor,
+              title: AppText.manageLocations(context),
+              subtitle: AppText.manageLocations(context),
+              onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => const ManageLocationsScreen())),
+            ),
+          ],
+        ),
+      ), // Consumer<LanguageProvider>
     );
   }
 

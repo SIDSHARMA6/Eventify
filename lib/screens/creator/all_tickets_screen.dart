@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/language_provider.dart';
+import '../../utils/app_text.dart';
 import '../../config/theme.dart';
 import '../../widgets/gender_icon.dart';
 import '../../widgets/gradient_app_bar.dart';
 import '../../widgets/loading_overlay.dart';
+import '../../widgets/scanned_badge.dart';
 import '../../services/ticket_service.dart';
 
 class AllTicketsScreen extends StatefulWidget {
@@ -17,14 +20,15 @@ class AllTicketsScreen extends StatefulWidget {
 }
 
 class _AllTicketsScreenState extends State<AllTicketsScreen> {
-  bool _isAdmin = false;
+  // FIX C-08: Store stream once in initState — not recreated per rebuild
+  late final Stream<List<Map<String, dynamic>>> _ticketsStream;
   String _filterType = 'all';
   bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    _isAdmin = Provider.of<AuthProvider>(context, listen: false).isAdmin;
+    _ticketsStream = TicketService().getReservationsByEvent(widget.event['id']);
   }
 
   List<Map<String, dynamic>> _filtered(List<Map<String, dynamic>> list) {
@@ -42,21 +46,21 @@ class _AllTicketsScreenState extends State<AllTicketsScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete Ticket'),
-        content: Text('Delete ticket for ${ticket['userName']}?'),
+        title: Text(AppText.deleteTicket(context)),
+        content: Text('${AppText.delete(context)}: ${ticket['userName']}?'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('Keep')),
+              child: Text(AppText.keepTicket(context))),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Delete'),
+            style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.error),
+            child: Text(AppText.delete(context)),
           ),
         ],
       ),
     );
-
     if (confirm == true && mounted) {
       setState(() => _isLoading = true);
       try {
@@ -79,20 +83,25 @@ class _AllTicketsScreenState extends State<AllTicketsScreen> {
   Widget build(BuildContext context) {
     return LoadingOverlay(
         isLoading: _isLoading,
-        message: 'Deleting...',
+        message: AppText.loading(context),
         child: StreamBuilder<List<Map<String, dynamic>>>(
-          stream: TicketService().getReservationsByEvent(widget.event['id']),
+          stream: _ticketsStream,
           builder: (context, snapshot) {
+            // Language read inside builder — avoids full screen rebuild on lang change
+            context.watch<LanguageProvider>();
             final all = snapshot.data ?? [];
             final filtered = _filtered(all);
             final scannedCount =
                 all.where((b) => b['isScanned'] == true).length;
             final activeCount = all.where((b) => b['isScanned'] != true).length;
+            // FIX-019: Read live from provider, not cached state
+            final isAdmin =
+                Provider.of<AuthProvider>(context, listen: false).isAdmin;
 
             return Scaffold(
               appBar: GradientAppBar(
-                title: const Text('All Tickets',
-                    style: TextStyle(color: Colors.white)),
+                title: Text(AppText.allTickets(context),
+                    style: const TextStyle(color: Colors.white)),
               ),
               body: Column(
                 children: [
@@ -103,13 +112,14 @@ class _AllTicketsScreenState extends State<AllTicketsScreen> {
                       scrollDirection: Axis.horizontal,
                       child: Row(
                         children: [
-                          _chip('All', 'all', all.length,
+                          _chip(AppText.allFilter(context), 'all', all.length,
                               Theme.of(context).primaryColor),
                           const SizedBox(width: 8),
-                          _chip('Active', 'active', activeCount, Colors.blue),
+                          _chip(AppText.activeFilter(context), 'active',
+                              activeCount, Colors.blue),
                           const SizedBox(width: 8),
-                          _chip(
-                              'Scanned', 'scanned', scannedCount, Colors.green),
+                          _chip(AppText.scanned(context), 'scanned',
+                              scannedCount, Colors.green),
                         ],
                       ),
                     ),
@@ -127,9 +137,12 @@ class _AllTicketsScreenState extends State<AllTicketsScreen> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
-                        _stat('Total', all.length, Icons.confirmation_number),
-                        _stat('Active', activeCount, Icons.check_circle),
-                        _stat('Scanned', scannedCount, Icons.qr_code_scanner),
+                        _stat(AppText.totalLabel(context), all.length,
+                            Icons.confirmation_number),
+                        _stat(AppText.activeFilter(context), activeCount,
+                            Icons.check_circle),
+                        _stat(AppText.scanned(context), scannedCount,
+                            Icons.qr_code_scanner),
                       ],
                     ),
                   ),
@@ -140,7 +153,7 @@ class _AllTicketsScreenState extends State<AllTicketsScreen> {
                     child: filtered.isEmpty
                         ? Center(
                             child: Text(
-                              'No tickets yet',
+                              AppText.noTicketsYet(context),
                               style: Theme.of(context).textTheme.titleMedium,
                             ),
                           )
@@ -169,23 +182,7 @@ class _AllTicketsScreenState extends State<AllTicketsScreen> {
                                               fontWeight: FontWeight.bold),
                                         ),
                                       ),
-                                      if (isScanned)
-                                        Container(
-                                          margin:
-                                              const EdgeInsets.only(left: 4),
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 8, vertical: 4),
-                                          decoration: BoxDecoration(
-                                            color: Colors.green,
-                                            borderRadius:
-                                                BorderRadius.circular(4),
-                                          ),
-                                          child: const Text('SCANNED',
-                                              style: TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 10,
-                                                  fontWeight: FontWeight.bold)),
-                                        ),
+                                      if (isScanned) const ScannedBadge(),
                                     ],
                                   ),
                                   subtitle: Column(
@@ -193,7 +190,9 @@ class _AllTicketsScreenState extends State<AllTicketsScreen> {
                                         CrossAxisAlignment.start,
                                     children: [
                                       const SizedBox(height: 4),
-                                      Text('Ticket ID: ${booking['ticketId']}',
+                                      Text(
+                                          AppText.ticketIdPrefix(context,
+                                              booking['ticketId'] ?? ''),
                                           style: const TextStyle(
                                               fontSize: 12,
                                               fontFamily: 'monospace')),
@@ -219,8 +218,8 @@ class _AllTicketsScreenState extends State<AllTicketsScreen> {
                                         ),
                                         child: Text(
                                           booking['gender'] == 'male'
-                                              ? 'Male'
-                                              : 'Female',
+                                              ? (AppText.male(context))
+                                              : (AppText.female(context)),
                                           style: TextStyle(
                                             color: booking['gender'] == 'male'
                                                 ? AppTheme.maleColor
@@ -230,12 +229,14 @@ class _AllTicketsScreenState extends State<AllTicketsScreen> {
                                           ),
                                         ),
                                       ),
-                                      if (_isAdmin) ...[
+                                      if (isAdmin) ...[
                                         const SizedBox(width: 8),
                                         IconButton(
                                           icon: const Icon(Icons.delete_outline,
                                               size: 22),
-                                          color: Colors.red,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .error,
                                           onPressed: () =>
                                               _deleteTicket(booking),
                                         ),

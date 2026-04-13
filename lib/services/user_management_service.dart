@@ -8,17 +8,25 @@ class UserManagementService {
 
   final _firebase = FirebaseService();
 
-  Stream<List<Map<String, dynamic>>> getAllCreators() =>
-      _firebase.usersCollection
-          .where('role', isEqualTo: 'creator')
-          .snapshots()
-          .map((s) => s.docs
-              .map((d) => {...d.data() as Map<String, dynamic>, 'id': d.id})
-              .toList());
+  List<Map<String, dynamic>>? _creatorsCache;
+
+  late final Stream<List<Map<String, dynamic>>> _creatorsStream = _firebase
+      .usersCollection
+      .where('role', isEqualTo: 'creator')
+      .snapshots()
+      .map((s) {
+    final result = s.docs
+        .map((d) => {...d.data() as Map<String, dynamic>, 'id': d.id})
+        .toList();
+    _creatorsCache = result;
+    return result;
+  }).asBroadcastStream();
+
+  Stream<List<Map<String, dynamic>>> getAllCreators() async* {
+    if (_creatorsCache != null) yield _creatorsCache!;
+    yield* _creatorsStream;
+  }
 
   Future<void> deleteCreator(String id) =>
       _firebase.usersCollection.doc(id).delete();
-
-  Stream<int> getLocationsCount() =>
-      _firebase.locationsCollection.snapshots().map((s) => s.docs.length);
 }

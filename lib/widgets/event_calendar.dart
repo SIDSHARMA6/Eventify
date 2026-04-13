@@ -4,7 +4,10 @@ import '../services/event_service.dart';
 import '../utils/app_text.dart';
 import '../utils/helpers.dart';
 import '../utils/language_helper.dart';
+import '../providers/language_provider.dart';
+import 'package:provider/provider.dart';
 import '../screens/user/event_details_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class EventCalendar extends StatefulWidget {
   final String? highlightedDate;
@@ -17,21 +20,52 @@ class EventCalendar extends StatefulWidget {
 class _EventCalendarState extends State<EventCalendar> {
   DateTime _focused = DateTime.now();
   DateTime? _selected;
+  Set<String> _addedEventIds = {};
+  late final Stream<List<Map<String, dynamic>>> _eventsStream;
 
   @override
   void initState() {
     super.initState();
+    _eventsStream = EventService().getEvents();
+    // Defer SharedPreferences read to after first frame to avoid jank
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadAddedEvents());
     if (widget.highlightedDate != null) {
       _selected =
           _focused = DateTime.tryParse(widget.highlightedDate!) ?? _focused;
     }
   }
 
+  bool _isEventOnDay(Map<String, dynamic> e, DateTime day) {
+    try {
+      final ds = e['date'] as String? ?? '';
+      if (ds.isEmpty) return false;
+      final parsed = DateTime.tryParse(ds);
+      return parsed != null && isSameDay(parsed, day);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _loadAddedEvents() async {
+    final prefs = await SharedPreferences.getInstance();
+    final keys = prefs.getKeys().where((k) => k.startsWith('cal_added_'));
+    setState(() {
+      _addedEventIds = keys
+          .where((k) => prefs.getBool(k) == true)
+          .map((k) => k.replaceFirst('cal_added_', ''))
+          .toSet();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: EventService().getEvents(),
+      stream: _eventsStream,
       builder: (context, snap) {
+        final isJa = context.watch<LanguageProvider>().currentLanguage == 'ja';
+        final now = DateTime.now();
+        final firstDay = DateTime(now.year, now.month, 1);
+        final lastDay = DateTime(now.year, now.month + 2, 0);
         final allEvents = snap.data ?? [];
         return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Padding(
@@ -40,14 +74,15 @@ class _EventCalendarState extends State<EventCalendar> {
                   style: const TextStyle(
                       fontSize: 20, fontWeight: FontWeight.bold))),
           TableCalendar(
-            firstDay: DateTime.now().subtract(const Duration(days: 30)),
-            lastDay: DateTime.now().add(const Duration(days: 90)),
-            focusedDay: _focused,
+            locale: isJa ? 'ja_JP' : 'en_US',
+            firstDay: firstDay,
+            lastDay: lastDay,
+            focusedDay: _focused.isBefore(firstDay)
+                ? firstDay
+                : (_focused.isAfter(lastDay) ? lastDay : _focused),
             selectedDayPredicate: (d) => isSameDay(_selected, d),
             eventLoader: (d) => allEvents
-                .where((e) =>
-                    !e['isHidden'] &&
-                    isSameDay(DateTime.tryParse(e['date']), d))
+                .where((e) => e['isHidden'] != true && _isEventOnDay(e, d))
                 .toList(),
             onDaySelected: (s, f) {
               setState(() {
@@ -55,10 +90,9 @@ class _EventCalendarState extends State<EventCalendar> {
                 _focused = f;
               });
               final evs = allEvents
-                  .where((e) =>
-                      !e['isHidden'] &&
-                      isSameDay(DateTime.tryParse(e['date']), s))
+                  .where((e) => e['isHidden'] != true && _isEventOnDay(e, s))
                   .toList();
+
               if (evs.isNotEmpty) _showEvs(context, s, evs);
             },
             calendarStyle: CalendarStyle(
@@ -74,6 +108,25 @@ class _EventCalendarState extends State<EventCalendar> {
                     color: Colors.blue, shape: BoxShape.circle)),
             headerStyle: const HeaderStyle(
                 formatButtonVisible: false, titleCentered: true),
+            calendarBuilders: CalendarBuilders(
+              markerBuilder: (context, date, events) {
+                if (events.isEmpty) return null;
+                final list = events as List<Map<String, dynamic>>;
+                final hasAdded =
+                    list.any((e) => _addedEventIds.contains(e['id']));
+                return Positioned(
+                  bottom: 1,
+                  child: Container(
+                    width: 7,
+                    height: 7,
+                    decoration: BoxDecoration(
+                      color: hasAdded ? const Color(0xFFFE008B) : Colors.blue,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                );
+              },
+            ),
           ),
         ]);
       },
@@ -95,24 +148,32 @@ class _EventCalendarState extends State<EventCalendar> {
                       itemCount: evs.length,
                       itemBuilder: (cc, i) => ListTile(
                             leading: CircleAvatar(
-                                backgroundImage:
-                                    (evs[i]['images_en']?[0] != null)
-                                        ? NetworkImage(evs[i]['images_en'][0])
-                                        : null),
+                                backgroundImage: (LanguageHelper.getImages(
+                                            evs[i], isJa)
+                                        .isNotEmpty)
+                                    ? NetworkImage(
+                                        LanguageHelper.getImages(evs[i], isJa)
+                                            .first)
+                                    : null),
                             title: Text(
                                 LanguageHelper.getEventTitle(evs[i], isJa)),
                             subtitle: Text(
                                 '${Helpers.formatTo12Hour(evs[i]['startTime'])} - ${Helpers.formatTo12Hour(evs[i]['endTime'])}'),
-                            onTap: () => Navigator.pushReplacement(
-                                c,
+                            onTap: () {
+                              Navigator.pop(c);
+                              Navigator.push(
+                                ctx,
                                 MaterialPageRoute(
-                                    builder: (_) =>
-                                        EventDetailsScreen(event: evs[i]))),
+                                  builder: (_) =>
+                                      EventDetailsScreen(event: evs[i]),
+                                ),
+                              ).then((_) => _loadAddedEvents());
+                            },
                           ))),
               actions: [
                 TextButton(
                     onPressed: () => Navigator.pop(c),
-                    child: const Text('Close'))
+                    child: Text(AppText.close(ctx)))
               ],
             ));
   }

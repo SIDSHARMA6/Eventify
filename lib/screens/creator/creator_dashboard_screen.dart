@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../utils/app_text.dart';
+import '../../utils/app_dialogs.dart';
 import '../../utils/language_helper.dart';
 import '../../providers/language_provider.dart';
 import '../../providers/auth_provider.dart';
@@ -23,6 +25,7 @@ class CreatorDashboardScreen extends StatefulWidget {
 class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
   String? _creatorId;
   bool _isLoading = false;
+  late final Stream<List<Map<String, dynamic>>> _eventsStream;
 
   @override
   void initState() {
@@ -34,12 +37,9 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
       });
     } else {
       _creatorId = auth.userId;
+      // FIX C-11: Store stream once in initState, not recreated per build
+      _eventsStream = EventService().getEventsByCreator(_creatorId!);
     }
-  }
-
-  Stream<List<Map<String, dynamic>>> _myEventsStream() {
-    if (_creatorId == null) return const Stream.empty();
-    return EventService().getEventsByCreator(_creatorId!);
   }
 
   bool _isEventOutsideVisibleRange(Map<String, dynamic> event) {
@@ -116,7 +116,9 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(newHidden ? 'Event hidden' : 'Event visible'),
+            content: Text(newHidden
+                ? AppText.eventHidden(context)
+                : AppText.eventVisible(context)),
           ),
         );
       }
@@ -126,8 +128,12 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
   }
 
   Future<void> _duplicateEvent(Map<String, dynamic> event) async {
-    final duplicated = Map<String, dynamic>.from(event);
-    duplicated.remove('id');
+    final duplicated = <String, dynamic>{};
+    for (final entry in event.entries) {
+      if (entry.key == 'id') continue;
+      if (entry.value is Timestamp) continue; // skip all Firestore Timestamps
+      duplicated[entry.key] = entry.value;
+    }
     duplicated['title_en'] = '${event['title_en']} (Copy)';
     duplicated['title_ja'] = '${event['title_ja']} (コピー)';
     duplicated['maleBooked'] = 0;
@@ -155,7 +161,6 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    context.watch<LanguageProvider>();
     if (_creatorId == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
@@ -163,8 +168,10 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
     return LoadingOverlay(
       isLoading: _isLoading,
       child: StreamBuilder<List<Map<String, dynamic>>>(
-        stream: _myEventsStream(),
+        stream: _creatorId == null ? const Stream.empty() : _eventsStream,
         builder: (context, snapshot) {
+          // Language read inside builder — avoids full screen rebuild on lang change
+          context.watch<LanguageProvider>();
           final myEvents = snapshot.data ?? [];
 
           return PopScope(
@@ -172,23 +179,7 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
             onPopInvokedWithResult: (didPop, result) async {
               if (didPop) return;
 
-              final shouldLogout = await showDialog<bool>(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: Text(AppText.logout(context)),
-                  content: Text(AppText.confirmLogout(context)),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context, false),
-                      child: Text(AppText.no(context)),
-                    ),
-                    TextButton(
-                      onPressed: () => Navigator.pop(context, true),
-                      child: Text(AppText.yes(context)),
-                    ),
-                  ],
-                ),
-              );
+              final shouldLogout = await AppDialogs.confirmLogout(context);
 
               if (shouldLogout == true && context.mounted) {
                 _logout();
@@ -211,8 +202,9 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
                 physics: const BouncingScrollPhysics(),
                 padding: const EdgeInsets.all(16),
                 children: [
-                  // QR Scanner Button — admin only
-                  if (Provider.of<AuthProvider>(context, listen: false).isAdmin)
+                  // QR Scanner Button — admin and creator
+                  if (Provider.of<AuthProvider>(context, listen: false).isAdmin ||
+                      Provider.of<AuthProvider>(context, listen: false).isCreator)
                     GradientButtonIcon(
                       onPressed: () {
                         Navigator.push(
@@ -257,7 +249,7 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
                   const SizedBox(height: 8),
 
                   Text(
-                    '${myEvents.length} events created',
+                    AppText.eventsCreatedCount(context, myEvents.length),
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: Theme.of(context).textTheme.bodySmall?.color,
                         ),
@@ -280,7 +272,7 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
                             ),
                             const SizedBox(height: 16),
                             Text(
-                              'No events created yet',
+                              AppText.noEventsCreatedYet(context),
                               style: Theme.of(context).textTheme.titleMedium,
                             ),
                           ],
@@ -294,7 +286,7 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
                         margin: const EdgeInsets.only(bottom: 12),
                         child: ListTile(
                           leading: CircleAvatar(
-                            backgroundImage: _getEventImage(event),
+                            backgroundImage: _getEventImage(context, event),
                           ),
                           title: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -303,8 +295,8 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
                                 child: Text(
                                   LanguageHelper.getEventTitle(
                                     event,
-                                    Provider.of<LanguageProvider>(context,
-                                                listen: false)
+                                    context
+                                            .watch<LanguageProvider>()
                                             .currentLanguage ==
                                         'ja',
                                   ),
@@ -315,17 +307,21 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
                               const SizedBox(width: 8),
                               // Status badges
                               if (isHidden)
-                                const StatusBadge(
-                                    label: 'HIDDEN', color: Colors.orange)
+                                StatusBadge(
+                                    label: AppText.statusHidden(context),
+                                    color: Colors.orange)
                               else if (event['isDuplicated'] == true)
-                                const StatusBadge(
-                                    label: 'DUPLICATED', color: Colors.blue)
+                                StatusBadge(
+                                    label: AppText.statusDuplicated(context),
+                                    color: Colors.blue)
                               else if (_isEventOutsideVisibleRange(event))
-                                const StatusBadge(
-                                    label: 'PAST/FUTURE', color: Colors.grey)
+                                StatusBadge(
+                                    label: AppText.statusPastFuture(context),
+                                    color: Colors.grey)
                               else
-                                const StatusBadge(
-                                    label: 'ACTIVE', color: Colors.green),
+                                StatusBadge(
+                                    label: AppText.statusActive(context),
+                                    color: Colors.green),
                             ],
                           ),
                           subtitle:
@@ -466,10 +462,12 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
     ); // LoadingOverlay
   }
 
-  ImageProvider _getEventImage(Map<String, dynamic> event) {
-    final images = event['images_en'];
-    if (images is List && images.isNotEmpty) {
-      final img = images[0]?.toString() ?? '';
+  ImageProvider _getEventImage(
+      BuildContext context, Map<String, dynamic> event) {
+    final isJa = context.watch<LanguageProvider>().currentLanguage == 'ja';
+    final images = LanguageHelper.getImages(event, isJa);
+    if (images.isNotEmpty) {
+      final img = images[0];
       if (img.startsWith('http')) return NetworkImage(img);
     }
     return const AssetImage('assets/images/placeholder.png');

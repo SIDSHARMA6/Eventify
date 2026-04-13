@@ -1,13 +1,14 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'firebase_service.dart';
 import 'device_service.dart';
+import 'package:timezone/timezone.dart' as tz;
+import 'package:timezone/data/latest.dart' as tz;
 
 @pragma('vm:entry-point')
-Future<void> _bgHandler(RemoteMessage m) async =>
-    debugPrint('📩 BG: ${m.notification?.title}');
+Future<void> _bgHandler(RemoteMessage m) async {}
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
@@ -19,14 +20,20 @@ class NotificationService {
   final _local = FlutterLocalNotificationsPlugin();
   static GlobalKey<NavigatorState>? navigatorKey;
 
+  // FIX L-32: Cap simultaneous in-app overlays to prevent screen flooding
+  final List<OverlayEntry> _activeOverlays = [];
+  static const int _maxOverlays = 2;
+
   Future<void> initialize() async {
-    const android = AndroidInitializationSettings('@mipmap/launcher_icon');
+    const android =
+        AndroidInitializationSettings('@drawable/notification_logo');
     const ios = DarwinInitializationSettings(
         requestAlertPermission: true,
         requestBadgePermission: true,
         requestSoundPermission: true);
     await _local
         .initialize(const InitializationSettings(android: android, iOS: ios));
+    tz.initializeTimeZones();
     await _firebase.messaging.requestPermission();
     await _firebase.messaging.subscribeToTopic('all_users');
     final token = await _firebase.messaging.getToken();
@@ -39,13 +46,14 @@ class NotificationService {
     });
   }
 
+  // FIX D-10: Use DateTime.now() instead of FieldValue.serverTimestamp() to remove Firestore import
   Future<void> _saveToken(String t) async {
     final id = await _device.getDeviceId();
     await _firebase.fcmTokensCollection.doc(id).set({
       'deviceId': id,
       'token': t,
-      'updatedAt': FieldValue.serverTimestamp()
-    });
+      'updatedAt': DateTime.now().toIso8601String(),
+    }, SetOptions(merge: true));
   }
 
   NotificationDetails _details() => const NotificationDetails(
@@ -53,7 +61,9 @@ class NotificationService {
             'high_importance_channel', 'High Importance',
             importance: Importance.high,
             priority: Priority.high,
-            icon: '@mipmap/launcher_icon'),
+            icon: '@drawable/notification_logo',
+            largeIcon:
+                DrawableResourceAndroidBitmap('@drawable/notification_logo')),
         iOS: DarwinNotificationDetails(
             presentAlert: true, presentBadge: true, presentSound: true),
       );
@@ -68,7 +78,15 @@ class NotificationService {
     if (n == null || navigatorKey?.currentContext == null) return;
     final ctx = navigatorKey!.currentContext!;
     final overlay = Overlay.of(ctx);
-    final entry = OverlayEntry(
+
+    // FIX M-08/L-32: Remove oldest if at cap
+    if (_activeOverlays.length >= _maxOverlays) {
+      final oldest = _activeOverlays.removeAt(0);
+      if (oldest.mounted) oldest.remove();
+    }
+
+    late OverlayEntry entry;
+    entry = OverlayEntry(
         builder: (c) => Positioned(
               top: MediaQuery.of(c).padding.top + 10,
               left: 10,
@@ -80,15 +98,14 @@ class NotificationService {
                     decoration: BoxDecoration(
                         color: Theme.of(c).cardColor,
                         borderRadius: BorderRadius.circular(12),
-                        boxShadow: [
+                        boxShadow: const [
                           BoxShadow(
                               color: Colors.black26,
                               blurRadius: 10,
-                              offset: const Offset(0, 5))
+                              offset: Offset(0, 5))
                         ]),
                     child: Row(children: [
-                      Icon(Icons.notifications,
-                          color: Theme.of(c).primaryColor),
+                      Image.asset('assets/logo.png', width: 32, height: 32),
                       const SizedBox(width: 12),
                       Expanded(
                           child: Column(
@@ -105,18 +122,39 @@ class NotificationService {
                     ]),
                   )),
             ));
+
+    _activeOverlays.add(entry);
     overlay.insert(entry);
-    Future.delayed(const Duration(seconds: 4), () => entry.remove());
+    Future.delayed(const Duration(seconds: 4), () {
+      if (entry.mounted) entry.remove();
+      _activeOverlays.remove(entry);
+    });
   }
 
   Future<void> scheduleEventReminder(
       String title, DateTime date, String time) async {
+    // FIX L-33: Guard against malformed time string (no colon)
     final parts = time.split(':');
-    final dt = DateTime(date.year, date.month, date.day, int.parse(parts[0]),
-        int.parse(parts[1]));
-    if (dt.subtract(const Duration(hours: 1)).isAfter(DateTime.now())) {
-      await _local.show(
-          dt.hashCode, 'Reminder Set!', '1 hour before $title', _details());
+    if (parts.length < 2) return;
+
+    final hour = int.tryParse(parts[0]);
+    final minute = int.tryParse(parts[1]);
+    if (hour == null || minute == null) return;
+
+    final dt = DateTime(date.year, date.month, date.day, hour, minute);
+    final scheduleTime = dt.subtract(const Duration(hours: 1));
+
+    if (scheduleTime.isAfter(DateTime.now())) {
+      await _local.zonedSchedule(
+        dt.hashCode,
+        'Event Reminder ⏰',
+        'Starting in 1 hour: $title',
+        tz.TZDateTime.from(scheduleTime, tz.local),
+        _details(),
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+      );
     }
   }
 

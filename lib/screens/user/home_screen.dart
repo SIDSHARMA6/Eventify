@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import '../../services/event_service.dart';
-import '../../providers/language_provider.dart';
 import '../../widgets/top_bar.dart';
 import '../../widgets/event_card.dart';
 import '../../widgets/latest_bookings.dart';
 import '../../widgets/event_calendar.dart';
+import 'package:provider/provider.dart';
+import '../../providers/language_provider.dart';
 import '../../utils/app_text.dart';
 import 'event_details_screen.dart';
 
@@ -19,12 +19,22 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen>
     with AutomaticKeepAliveClientMixin {
   String _selectedLocation = 'All';
+  List<Map<String, dynamic>> _cachedEvents = [];
+  List<Map<String, dynamic>>? _lastRawData;
+  late final Stream<List<Map<String, dynamic>>> _eventsStream;
+
+  String? _lastLanguage;
 
   @override
   bool get wantKeepAlive => true;
 
+  @override
+  void initState() {
+    super.initState();
+    _eventsStream = EventService().getEvents();
+  }
 
-  List<Map<String, dynamic>> _filterAndSort(List<Map<String, dynamic>> events) {
+  List<Map<String, dynamic>> _filterAndSort(List<Map<String, dynamic>> events, String currentLanguage) {
     final now = DateTime.now();
     final currentMonth = DateTime(now.year, now.month, 1);
     final twoMonthsLater = DateTime(now.year, now.month + 2, 1);
@@ -41,9 +51,14 @@ class _HomeScreenState extends State<HomeScreen>
     }).toList();
 
     // Filter by location
-    final byLocation = _selectedLocation == 'All'
+    final byLocation = _selectedLocation.trim().toLowerCase() == 'all'
         ? visible
-        : visible.where((e) => e['location_en'] == _selectedLocation).toList();
+        : visible.where((e) {
+            final venueEn = (e['venueName_en'] ?? e['venueName'] as String? ?? '').trim().toLowerCase();
+            final locationEn = (e['location_en'] as String? ?? '').trim().toLowerCase();
+            final filter = _selectedLocation.trim().toLowerCase();
+            return venueEn == filter || locationEn == filter;
+          }).toList();
 
     // Sort by date ascending (nearest first)
     byLocation.sort((a, b) {
@@ -57,29 +72,43 @@ class _HomeScreenState extends State<HomeScreen>
     return byLocation;
   }
 
+  List<Map<String, dynamic>> _getEvents(List<Map<String, dynamic>> raw, String currentLanguage) {
+    // Only recompute when raw data or location filter or language actually changes
+    if (identical(raw, _lastRawData) && 
+        _cachedEvents.isNotEmpty && 
+        _lastLanguage == currentLanguage) {
+      return _cachedEvents;
+    }
+    _lastRawData = raw;
+    _lastLanguage = currentLanguage;
+    _cachedEvents = _filterAndSort(raw, currentLanguage);
+    return _cachedEvents;
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    context.watch<LanguageProvider>();
+    final currentLanguage = context.watch<LanguageProvider>().currentLanguage;
 
     return Scaffold(
       appBar: TopBar(
         selectedLocation: _selectedLocation,
-        onLocationChanged: (loc) => setState(() => _selectedLocation = loc),
+        onLocationChanged: (loc) => setState(() {
+          _selectedLocation = loc;
+          _lastRawData = null; // invalidate cache so filter reruns
+        }),
       ),
       body: StreamBuilder<List<Map<String, dynamic>>>(
-        stream: EventService().getEvents(),
+        stream: _eventsStream,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting &&
               !snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
 
-          final events = _filterAndSort(snapshot.data ?? []);
+          final events = _getEvents(snapshot.data ?? [], currentLanguage);
 
-          return RefreshIndicator(
-            onRefresh: () async => setState(() {}),
-            child: SingleChildScrollView(
+          return SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -127,6 +156,7 @@ class _HomeScreenState extends State<HomeScreen>
                     )
                   else
                     ...events.map((event) => EventCard(
+                          key: ValueKey('${event['id']}_$currentLanguage'),
                           event: event,
                           onTap: () {
                             Navigator.push(
@@ -145,9 +175,7 @@ class _HomeScreenState extends State<HomeScreen>
                   const EventCalendar(),
                   const SizedBox(height: 24),
                 ],
-              ),
-            ),
-          );
+              ));
         },
       ),
     );

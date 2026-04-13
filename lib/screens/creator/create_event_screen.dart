@@ -65,6 +65,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
 
   final ImagePicker _imagePicker = ImagePicker();
   bool _isSaving = false; // Loading state for save button
+  bool _isHidden = false; // Hidden state for event
 
   bool get _isEditing => widget.event != null;
 
@@ -189,14 +190,14 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     final imagesEnRaw = event['images_en'];
     if (imagesEnRaw is List) {
       _imagesEn = List<dynamic>.from(
-        imagesEnRaw.whereType<String>().where((s) => s.startsWith('http')),
+        imagesEnRaw.whereType<String>().where((s) => s.startsWith('https://')),
       );
     }
 
     final imagesJaRaw = event['images_ja'];
     if (imagesJaRaw is List) {
       _imagesJa = List<dynamic>.from(
-        imagesJaRaw.whereType<String>().where((s) => s.startsWith('http')),
+        imagesJaRaw.whereType<String>().where((s) => s.startsWith('https://')),
       );
     }
 
@@ -225,6 +226,9 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     } catch (e) {
       // Keep defaults if parsing fails
     }
+
+    // load isHidden — widget.event is guaranteed non-null here (_loadEventData only called when _isEditing)
+    _isHidden = widget.event!['isHidden'] ?? false;
   }
 
   @override
@@ -337,13 +341,13 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     setState(() => _isSaving = true);
 
     try {
-      // Upload images to Cloudinary and get URLs
-      final uploadedImagesEn = await _uploadImages(_imagesEn, 'en');
-      final uploadedImagesJa = await _uploadImages(_imagesJa, 'ja');
-
-      debugPrint('✅ Upload complete!');
-      debugPrint('📊 English URLs: ${uploadedImagesEn.length}');
-      debugPrint('📊 Japanese URLs: ${uploadedImagesJa.length}');
+      // FIX-025/ANR-04: Run both upload lists in parallel — much faster
+      final uploadResults = await Future.wait([
+        _uploadImages(_imagesEn, 'en'),
+        _uploadImages(_imagesJa, 'ja'),
+      ]);
+      final uploadedImagesEn = uploadResults[0];
+      final uploadedImagesJa = uploadResults[1];
 
       if (_isEditing) {
         final eventId = widget.event!['id'] as String;
@@ -395,7 +399,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
           'venueAddress_en': _venueAddressEnController.text,
           'venueAddress_ja': _venueAddressJaController.text,
           'mapLink': _mapLinkController.text.trim().isEmpty
-              ? 'https://maps.google.com'
+              ? null
               : _mapLinkController.text.trim(),
           'malePrice': int.tryParse(_malePriceController.text) ?? 0,
           'femalePrice': int.tryParse(_femalePriceController.text) ?? 0,
@@ -403,7 +407,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
           'femaleLimit': int.tryParse(_femaleLimitController.text) ?? 50,
           'maleBooked': 0,
           'femaleBooked': 0,
-          'isHidden': false,
+          'isHidden': _isHidden,
           'createdBy': widget.creatorId,
         };
 
@@ -413,6 +417,10 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
             copy['date'] = dt.toIso8601String().substring(0, 10);
             copy['startTime'] =
                 '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+            // FIX M-10: recurring copies must carry endDate and endTime
+            copy['endDate'] =
+                _selectedEndDate.toIso8601String().substring(0, 10);
+            copy['endTime'] = endTimeStr;
             copy['isRecurring'] = true;
             copy['recurringLabel'] = 'Recurring';
             await EventService().createEvent(copy);
@@ -455,41 +463,30 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     final List<String> urls = [];
 
     for (var image in images) {
-      if (image is String && image.startsWith('http')) {
+      if (image is String && image.startsWith('https://')) {
         // Already a valid Cloudinary/network URL — keep it
         urls.add(image);
       } else if (image is File) {
         // Upload to Cloudinary
         try {
-          debugPrint('📤 Uploading image to Cloudinary...');
           final url = await CloudinaryService().uploadImage(
             image,
             'event_images/$language',
           );
           urls.add(url);
-          debugPrint('✅ Upload successful: ${url.substring(0, 50)}...');
         } catch (e) {
-          // If upload fails, skip this image
-          debugPrint('❌ Failed to upload image: $e');
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Failed to upload image: $e'),
-                backgroundColor: Theme.of(context).colorScheme.error,
-              ),
-            );
-          }
+          // FIX-024: Rethrow so _saveEvent blocks and shows error — no silent data loss
+          rethrow;
         }
       }
     }
-
-    debugPrint('📊 Total URLs: ${urls.length}');
     return urls;
   }
 
   @override
   Widget build(BuildContext context) {
-    context.watch<LanguageProvider>(); // rebuild when language changes
+    context.read<
+        LanguageProvider>(); // form labels use AppText which reads context inline
     return Scaffold(
       appBar: GradientAppBar(
         title: Text(
@@ -507,7 +504,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
           children: [
             // English Version
             Text(
-              'English Version',
+              AppText.englishVersion(context),
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
@@ -519,19 +516,23 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               textInputAction: TextInputAction.next,
               onSubmitted: (_) => _titleJaFocus.requestFocus(),
               decoration: InputDecoration(
-                labelText: 'Title (English) *',
+                labelText: AppText.titleEnglish(context),
                 prefixIcon: const Icon(Icons.title),
                 errorText: _fieldErrors['titleEn'] == true
                     ? 'This field is required'
                     : null,
                 border: _fieldErrors['titleEn'] == true
-                    ? const OutlineInputBorder(
-                        borderSide: BorderSide(color: Colors.red, width: 2),
+                    ? OutlineInputBorder(
+                        borderSide: BorderSide(
+                            color: Theme.of(context).colorScheme.error,
+                            width: 2),
                       )
                     : null,
                 enabledBorder: _fieldErrors['titleEn'] == true
-                    ? const OutlineInputBorder(
-                        borderSide: BorderSide(color: Colors.red, width: 2),
+                    ? OutlineInputBorder(
+                        borderSide: BorderSide(
+                            color: Theme.of(context).colorScheme.error,
+                            width: 2),
                       )
                     : null,
               ),
@@ -555,19 +556,23 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               textInputAction: TextInputAction.next,
               onSubmitted: (_) => _locationJaFocus.requestFocus(),
               decoration: InputDecoration(
-                labelText: 'Location (English) *',
-                prefixIcon: const Icon(Icons.location_on),
+                labelText: AppText.locationEnglish(context),
+                prefixIcon: const Icon(Icons.location_city),
                 errorText: _fieldErrors['locationEn'] == true
                     ? 'This field is required'
                     : null,
                 border: _fieldErrors['locationEn'] == true
-                    ? const OutlineInputBorder(
-                        borderSide: BorderSide(color: Colors.red, width: 2),
+                    ? OutlineInputBorder(
+                        borderSide: BorderSide(
+                            color: Theme.of(context).colorScheme.error,
+                            width: 2),
                       )
                     : null,
                 enabledBorder: _fieldErrors['locationEn'] == true
-                    ? const OutlineInputBorder(
-                        borderSide: BorderSide(color: Colors.red, width: 2),
+                    ? OutlineInputBorder(
+                        borderSide: BorderSide(
+                            color: Theme.of(context).colorScheme.error,
+                            width: 2),
                       )
                     : null,
               ),
@@ -584,7 +589,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
             Row(
               children: [
                 Text(
-                  'Images (English) - Up to 10 *',
+                  AppText.selectImageEn(context),
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w600,
                         color: _fieldErrors['imagesEn'] == true
@@ -594,7 +599,8 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                 ),
                 if (_fieldErrors['imagesEn'] == true) ...[
                   const SizedBox(width: 8),
-                  const Icon(Icons.error, color: Colors.red, size: 20),
+                  Icon(Icons.error,
+                      color: Theme.of(context).colorScheme.error, size: 20),
                 ],
               ],
             ),
@@ -602,9 +608,9 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Text(
-                  'At least one image is required',
+                  AppText.atLeastOneImageReq(context),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Colors.red,
+                        color: Theme.of(context).colorScheme.error,
                       ),
                 ),
               ),
@@ -615,7 +621,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
 
             // Japanese Version
             Text(
-              'Japanese Version',
+              AppText.japaneseVersion(context),
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
@@ -626,9 +632,9 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               focusNode: _titleJaFocus,
               textInputAction: TextInputAction.next,
               onSubmitted: (_) => _locationEnFocus.requestFocus(),
-              decoration: const InputDecoration(
-                labelText: 'Title (Japanese)',
-                prefixIcon: Icon(Icons.title),
+              decoration: InputDecoration(
+                labelText: AppText.titleJapanese(context),
+                prefixIcon: const Icon(Icons.title),
               ),
             ),
             const SizedBox(height: 16),
@@ -644,7 +650,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               focusNode: _locationJaFocus,
               textInputAction: TextInputAction.next,
               onSubmitted: (_) => _venueEnFocus.requestFocus(),
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Location (Japanese)',
                 prefixIcon: Icon(Icons.location_on),
               ),
@@ -654,7 +660,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
 
             // Japanese Images Section
             Text(
-              'Images (Japanese) - Up to 10',
+              AppText.selectImageJa(context),
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w600,
                   ),
@@ -664,9 +670,9 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
 
             const SizedBox(height: 24),
 
-            // Event Details
+            // Venue Details
             Text(
-              'Event Details',
+              AppText.venueDetails(context),
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
@@ -678,19 +684,23 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               textInputAction: TextInputAction.next,
               onSubmitted: (_) => _venueJaFocus.requestFocus(),
               decoration: InputDecoration(
-                labelText: 'Venue Name (English) *',
-                prefixIcon: const Icon(Icons.place),
+                labelText: AppText.venueNameEnglish(context),
+                prefixIcon: const Icon(Icons.business),
                 errorText: _fieldErrors['venueEn'] == true
                     ? 'This field is required'
                     : null,
                 border: _fieldErrors['venueEn'] == true
-                    ? const OutlineInputBorder(
-                        borderSide: BorderSide(color: Colors.red, width: 2),
+                    ? OutlineInputBorder(
+                        borderSide: BorderSide(
+                            color: Theme.of(context).colorScheme.error,
+                            width: 2),
                       )
                     : null,
                 enabledBorder: _fieldErrors['venueEn'] == true
-                    ? const OutlineInputBorder(
-                        borderSide: BorderSide(color: Colors.red, width: 2),
+                    ? OutlineInputBorder(
+                        borderSide: BorderSide(
+                            color: Theme.of(context).colorScheme.error,
+                            width: 2),
                       )
                     : null,
               ),
@@ -708,7 +718,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               focusNode: _venueJaFocus,
               textInputAction: TextInputAction.next,
               onSubmitted: (_) => _venueAddressEnFocus.requestFocus(),
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Venue Name (Japanese)',
                 prefixIcon: Icon(Icons.place),
               ),
@@ -721,7 +731,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               focusNode: _venueAddressEnFocus,
               textInputAction: TextInputAction.next,
               onSubmitted: (_) => _venueAddressJaFocus.requestFocus(),
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Venue Address (English)',
                 prefixIcon: Icon(Icons.location_on),
               ),
@@ -735,7 +745,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               focusNode: _venueAddressJaFocus,
               textInputAction: TextInputAction.next,
               onSubmitted: (_) => _mapLinkFocus.requestFocus(),
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Venue Address (Japanese)',
                 prefixIcon: Icon(Icons.location_on),
               ),
@@ -749,9 +759,9 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               onTap: _pickDate,
               borderRadius: BorderRadius.circular(8),
               child: InputDecorator(
-                decoration: const InputDecoration(
-                  labelText: 'Event Date',
-                  prefixIcon: Icon(Icons.calendar_today),
+                decoration: InputDecoration(
+                  labelText: AppText.eventDateLabel(context),
+                  prefixIcon: const Icon(Icons.calendar_today),
                 ),
                 child: Text(
                   _selectedDate.toIso8601String().substring(0, 10),
@@ -767,9 +777,9 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               onTap: _pickTime,
               borderRadius: BorderRadius.circular(8),
               child: InputDecorator(
-                decoration: const InputDecoration(
-                  labelText: 'Start Time',
-                  prefixIcon: Icon(Icons.access_time),
+                decoration: InputDecoration(
+                  labelText: AppText.startTimeLabel(context),
+                  prefixIcon: const Icon(Icons.access_time),
                 ),
                 child: Text(
                   _selectedTime.format(context),
@@ -785,9 +795,9 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               onTap: _pickEndDate,
               borderRadius: BorderRadius.circular(8),
               child: InputDecorator(
-                decoration: const InputDecoration(
-                  labelText: 'End Date',
-                  prefixIcon: Icon(Icons.calendar_today),
+                decoration: InputDecoration(
+                  labelText: AppText.endDateLabel(context),
+                  prefixIcon: const Icon(Icons.calendar_today_outlined),
                 ),
                 child: Text(
                   _selectedEndDate.toIso8601String().substring(0, 10),
@@ -803,9 +813,9 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               onTap: _pickEndTime,
               borderRadius: BorderRadius.circular(8),
               child: InputDecorator(
-                decoration: const InputDecoration(
-                  labelText: 'End Time',
-                  prefixIcon: Icon(Icons.access_time),
+                decoration: InputDecoration(
+                  labelText: AppText.endTimeLabel(context),
+                  prefixIcon: const Icon(Icons.access_time_filled),
                 ),
                 child: Text(
                   _selectedEndTime.format(context),
@@ -822,7 +832,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               focusNode: _mapLinkFocus,
               textInputAction: TextInputAction.next,
               onSubmitted: (_) => _malePriceFocus.requestFocus(),
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Google Maps Link',
                 hintText: 'https://maps.google.com/?q=Tokyo+Japan',
                 prefixIcon: Icon(Icons.map),
@@ -849,20 +859,22 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                     textInputAction: TextInputAction.next,
                     onSubmitted: (_) => _femalePriceFocus.requestFocus(),
                     decoration: InputDecoration(
-                      labelText: 'Male Price (¥) *',
-                      prefixIcon: const Icon(Icons.male),
+                      labelText: AppText.malePriceLabel(context),
+                      prefixIcon: const Icon(Icons.money),
                       errorText:
                           _fieldErrors['malePrice'] == true ? 'Required' : null,
                       border: _fieldErrors['malePrice'] == true
-                          ? const OutlineInputBorder(
-                              borderSide:
-                                  BorderSide(color: Colors.red, width: 2),
+                          ? OutlineInputBorder(
+                              borderSide: BorderSide(
+                                  color: Theme.of(context).colorScheme.error,
+                                  width: 2),
                             )
                           : null,
                       enabledBorder: _fieldErrors['malePrice'] == true
-                          ? const OutlineInputBorder(
-                              borderSide:
-                                  BorderSide(color: Colors.red, width: 2),
+                          ? OutlineInputBorder(
+                              borderSide: BorderSide(
+                                  color: Theme.of(context).colorScheme.error,
+                                  width: 2),
                             )
                           : null,
                     ),
@@ -883,21 +895,23 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                     textInputAction: TextInputAction.next,
                     onSubmitted: (_) => _maleLimitFocus.requestFocus(),
                     decoration: InputDecoration(
-                      labelText: 'Female Price (¥) *',
-                      prefixIcon: const Icon(Icons.female),
+                      labelText: AppText.femalePriceLabel(context),
+                      prefixIcon: const Icon(Icons.money),
                       errorText: _fieldErrors['femalePrice'] == true
                           ? 'Required'
                           : null,
                       border: _fieldErrors['femalePrice'] == true
-                          ? const OutlineInputBorder(
-                              borderSide:
-                                  BorderSide(color: Colors.red, width: 2),
+                          ? OutlineInputBorder(
+                              borderSide: BorderSide(
+                                  color: Theme.of(context).colorScheme.error,
+                                  width: 2),
                             )
                           : null,
                       enabledBorder: _fieldErrors['femalePrice'] == true
-                          ? const OutlineInputBorder(
-                              borderSide:
-                                  BorderSide(color: Colors.red, width: 2),
+                          ? OutlineInputBorder(
+                              borderSide: BorderSide(
+                                  color: Theme.of(context).colorScheme.error,
+                                  width: 2),
                             )
                           : null,
                     ),
@@ -922,20 +936,22 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                     textInputAction: TextInputAction.next,
                     onSubmitted: (_) => _femaleLimitFocus.requestFocus(),
                     decoration: InputDecoration(
-                      labelText: 'Male Limit *',
+                      labelText: AppText.maleLimitLabel(context),
                       prefixIcon: const Icon(Icons.people),
                       errorText:
                           _fieldErrors['maleLimit'] == true ? 'Required' : null,
                       border: _fieldErrors['maleLimit'] == true
-                          ? const OutlineInputBorder(
-                              borderSide:
-                                  BorderSide(color: Colors.red, width: 2),
+                          ? OutlineInputBorder(
+                              borderSide: BorderSide(
+                                  color: Theme.of(context).colorScheme.error,
+                                  width: 2),
                             )
                           : null,
                       enabledBorder: _fieldErrors['maleLimit'] == true
-                          ? const OutlineInputBorder(
-                              borderSide:
-                                  BorderSide(color: Colors.red, width: 2),
+                          ? OutlineInputBorder(
+                              borderSide: BorderSide(
+                                  color: Theme.of(context).colorScheme.error,
+                                  width: 2),
                             )
                           : null,
                     ),
@@ -955,21 +971,23 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                     focusNode: _femaleLimitFocus,
                     textInputAction: TextInputAction.done,
                     decoration: InputDecoration(
-                      labelText: 'Female Limit *',
+                      labelText: AppText.femaleLimitLabel(context),
                       prefixIcon: const Icon(Icons.people),
                       errorText: _fieldErrors['femaleLimit'] == true
                           ? 'Required'
                           : null,
                       border: _fieldErrors['femaleLimit'] == true
-                          ? const OutlineInputBorder(
-                              borderSide:
-                                  BorderSide(color: Colors.red, width: 2),
+                          ? OutlineInputBorder(
+                              borderSide: BorderSide(
+                                  color: Theme.of(context).colorScheme.error,
+                                  width: 2),
                             )
                           : null,
                       enabledBorder: _fieldErrors['femaleLimit'] == true
-                          ? const OutlineInputBorder(
-                              borderSide:
-                                  BorderSide(color: Colors.red, width: 2),
+                          ? OutlineInputBorder(
+                              borderSide: BorderSide(
+                                  color: Theme.of(context).colorScheme.error,
+                                  width: 2),
                             )
                           : null,
                     ),
@@ -985,12 +1003,19 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               ],
             ),
 
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(AppText.hideEventLabel(context)),
+              subtitle: Text(AppText.hideEventDesc(context)),
+              value: _isHidden,
+              onChanged: (value) => setState(() => _isHidden = value),
+            ),
             const SizedBox(height: 32),
 
             // ── Recurring Event (new events only) ───────────────────────
             if (!_isEditing) ...[
               Text(
-                'Recurring Event',
+                AppText.recurringEventLabel(context),
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.bold,
                     ),
@@ -1160,14 +1185,14 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
             onPressed: () => _pickImage(isEnglish),
             icon: const Icon(Icons.add_photo_alternate),
             label: Text(
-              'Pick Image (${images.length}/$maxImages) - Max 3MB',
+              AppText.pickImageMax(context, images.length, maxImages),
               style: const TextStyle(fontSize: 14),
             ),
           ),
 
         if (images.length >= maxImages)
           Text(
-            'Maximum 10 images reached',
+            AppText.maxImagesReached(context),
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: Theme.of(context).colorScheme.outline,
                 ),
@@ -1178,7 +1203,6 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
 
   Future<void> _pickImage(bool isEnglish) async {
     try {
-      debugPrint('📷 Opening image picker...');
       final XFile? pickedFile = await _imagePicker.pickImage(
         source: ImageSource.gallery,
         maxWidth: 1920,
@@ -1187,21 +1211,14 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       );
 
       if (pickedFile == null) {
-        debugPrint('❌ No image selected');
         return;
       }
 
       final file = File(pickedFile.path);
       final fileSize = await file.length();
 
-      debugPrint('✅ Image picked successfully');
-      debugPrint('   Path: ${file.path}');
-      debugPrint('   Size: ${(fileSize / 1024 / 1024).toStringAsFixed(2)} MB');
-
       // Check file size (3MB = 3 * 1024 * 1024 bytes)
       if (fileSize > 3 * 1024 * 1024) {
-        debugPrint(
-            '❌ Image too large: ${(fileSize / 1024 / 1024).toStringAsFixed(2)} MB');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -1217,14 +1234,11 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         if (isEnglish) {
           _imagesEn.add(file);
           _fieldErrors.remove('imagesEn');
-          debugPrint('✅ Added to English images. Total: ${_imagesEn.length}');
         } else {
           _imagesJa.add(file);
-          debugPrint('✅ Added to Japanese images. Total: ${_imagesJa.length}');
         }
       });
     } catch (e) {
-      debugPrint('❌ Error picking image: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

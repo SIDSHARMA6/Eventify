@@ -7,29 +7,39 @@ import '../../widgets/gradient_app_bar.dart';
 import '../../widgets/status_badge.dart';
 import '../creator/event_stats_screen.dart';
 
-class CreatorDetailScreen extends StatelessWidget {
+// FIX C-03: Converted to StatefulWidget — stream stored in initState, not recreated each build
+class CreatorDetailScreen extends StatefulWidget {
   final Map<String, dynamic> creator;
 
   const CreatorDetailScreen({super.key, required this.creator});
 
   @override
-  Widget build(BuildContext context) {
-    context.watch<LanguageProvider>();
+  State<CreatorDetailScreen> createState() => _CreatorDetailScreenState();
+}
 
+class _CreatorDetailScreenState extends State<CreatorDetailScreen> {
+  late final Stream<List<Map<String, dynamic>>> _eventsStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _eventsStream = EventService().getEventsByCreator(widget.creator['id']);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: GradientAppBar(
         title: Text(
-          creator['email'] ?? 'Creator',
+          widget.creator['email'] ?? 'Creator',
           style: const TextStyle(color: Colors.white),
         ),
       ),
       body: StreamBuilder<List<Map<String, dynamic>>>(
-        stream: EventService().getEventsByCreator(creator['id']),
+        stream: _eventsStream,
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
+          // Language read inside builder — avoids full screen rebuild on lang change
+          context.watch<LanguageProvider>();
           final events = snapshot.data ?? [];
 
           return Column(
@@ -45,7 +55,9 @@ class CreatorDetailScreen extends StatelessWidget {
                         radius: 40,
                         backgroundColor: Theme.of(context).primaryColor,
                         child: Text(
-                          creator['email']?.substring(0, 1).toUpperCase() ??
+                          widget.creator['email']
+                                  ?.substring(0, 1)
+                                  .toUpperCase() ??
                               'C',
                           style: TextStyle(
                             fontSize: 32,
@@ -55,12 +67,12 @@ class CreatorDetailScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 16),
                       Text(
-                        creator['email'] ?? 'No email',
+                        widget.creator['email'] ?? 'No email',
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Creator ID: ${creator['id']}',
+                        'Creator ID: ${widget.creator['id']}',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                       const SizedBox(height: 16),
@@ -168,9 +180,7 @@ class CreatorDetailScreen extends StatelessWidget {
                                 child: Text(
                                   LanguageHelper.getEventTitle(
                                     event,
-                                    Provider.of<LanguageProvider>(context,
-                                                listen: false)
-                                            .currentLanguage ==
+                                    context.watch<LanguageProvider>().currentLanguage ==
                                         'ja',
                                   ),
                                   maxLines: 2,

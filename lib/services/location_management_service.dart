@@ -2,19 +2,28 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'firebase_service.dart';
 
 class LocationManagementService {
+  static final LocationManagementService _instance =
+      LocationManagementService._internal();
+  factory LocationManagementService() => _instance;
+  LocationManagementService._internal();
+
   final _firebase = FirebaseService();
 
-  Stream<List<Map<String, dynamic>>> getAllLocations() =>
-      _firebase.locationsCollection.orderBy('order').snapshots().map((s) => s
-          .docs
-          .map((d) => {...d.data() as Map<String, dynamic>, 'id': d.id})
-          .toList());
+  // Cached last value — new subscribers get data instantly, no spinner
+  List<Map<String, dynamic>>? _locationsCache;
 
-  Future<Map<String, dynamic>?> getLocationById(String id) async {
-    final doc = await _firebase.locationsCollection.doc(id).get();
-    return doc.exists
-        ? {...doc.data() as Map<String, dynamic>, 'id': doc.id}
-        : null;
+  late final Stream<List<Map<String, dynamic>>> _locationsStream =
+      _firebase.locationsCollection.orderBy('order').snapshots().map((s) {
+    final result = s.docs
+        .map((d) => {...d.data() as Map<String, dynamic>, 'id': d.id})
+        .toList();
+    _locationsCache = result;
+    return result;
+  }).asBroadcastStream();
+
+  Stream<List<Map<String, dynamic>>> getAllLocations() async* {
+    if (_locationsCache != null) yield _locationsCache!;
+    yield* _locationsStream;
   }
 
   Future<String> createLocation(Map<String, dynamic> data) async {
@@ -36,7 +45,4 @@ class LocationManagementService {
 
   Future<void> deleteLocation(String id) async =>
       await _firebase.locationsCollection.doc(id).delete();
-
-  Future<int> getLocationCount() async =>
-      (await _firebase.locationsCollection.get()).docs.length;
 }

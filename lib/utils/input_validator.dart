@@ -1,5 +1,3 @@
-import 'package:flutter/foundation.dart';
-
 /// Input validation utility for security and data integrity
 class InputValidator {
   // Prevent instantiation
@@ -161,12 +159,5 @@ class InputValidator {
     }
 
     return _checkXSS(trimmed);
-  }
-
-  /// Log validation errors in debug mode only
-  static void logError(String field, String? error) {
-    if (kDebugMode && error != null) {
-      debugPrint('⚠️ Validation Error [$field]: $error');
-    }
   }
 }

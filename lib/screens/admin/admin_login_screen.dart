@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../utils/app_text.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/language_provider.dart';
 import '../../widgets/gradient_app_bar.dart';
 
 class AdminLoginScreen extends StatefulWidget {
@@ -53,7 +54,7 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
         setState(() => _isLoading = false);
         scaffoldMessenger.showSnackBar(
           SnackBar(
-            content: const Text('Admin access only'),
+            content: Text(AppText.adminAccessOnly(context)),
             backgroundColor: theme.colorScheme.error,
           ),
         );
@@ -64,8 +65,8 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
 
       if (!mounted) return;
 
-      // Navigate to admin dashboard
-      navigator.pushReplacementNamed(AdminRoutes.adminDashboard);
+      // FIX L-16: Navigate to home wrapper (has bottom nav) not dashboard directly
+      navigator.pushReplacementNamed(AdminRoutes.home);
     } catch (e) {
       setState(() => _isLoading = false);
       scaffoldMessenger.showSnackBar(
@@ -79,9 +80,11 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    context.read<LanguageProvider>();
     return Scaffold(
       appBar: GradientAppBar(
-        title: const Text('Admin Login', style: TextStyle(color: Colors.white)),
+        title: Text(AppText.adminLoginTitle(context),
+            style: const TextStyle(color: Colors.white)),
       ),
       body: Center(
         child: SingleChildScrollView(
@@ -92,7 +95,7 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
               Icon(Icons.admin_panel_settings,
                   size: 100, color: Theme.of(context).primaryColor),
               const SizedBox(height: 40),
-              Text('Admin Portal',
+              Text(AppText.adminPortal(context),
                   style: Theme.of(context).textTheme.headlineMedium),
               const SizedBox(height: 40),
               TextField(
